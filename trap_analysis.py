@@ -25,6 +25,31 @@ def get_constants():
     constants = {'e' : 1.602E-19, 'm_e' : 9.11E-31, 'eps0' : 8.85E-12}
     return constants
 
+def load_dsp(df):
+    """
+    Loads a .dsp file from Maxwell and extracts elements, nodes and the solution at the nodes.
+    For this code to work, the data must have been saved as a dsp file, with only a single plot in the Fields tab.
+    :param df: File path of the data file
+    :return: elements, node, element solution
+    """
+    with open(df, 'r') as myfile:
+        data = myfile.readlines()
+
+    # The important data is stored on line numbers 91-93.
+    # Line 91: Elements: Each element is composed of 6 nodes. Each sequence of 2,3,3,0,6 is followed by 6 points, which will
+    # make up a single element. First 2 entries are diagnostic info.
+    # Line 92: Node coordinates. One node coordinate has 3 entries: x, y, z
+    # Line 93: Solution on each node. First 3 entries are diagnostic info.
+
+    line_nr = [91, 92, 93]
+    elements = np.array(re.findall(r"\((.*?)\)", data[line_nr[0]-1])[0].split(', '), dtype=int)
+    nodes = np.array(re.findall(r"\((.*?)\)", data[line_nr[1]-1])[0].split(', '), dtype=float)
+    elem_solution = np.array(re.findall(r"\((.*?)\)", data[line_nr[2]-1])[0].split(', '), dtype=float)
+
+    nodes = nodes.reshape((nodes.shape[0]/3, 3))
+
+    return elements, nodes, elem_solution[3:]
+
 def select_domain(X, Y, Esquared, xdomain=None, ydomain=None):
     """
     Selects a specific area determined by xdomain and ydomain in X, Y and Esquared. X, Y and Esquared may be
