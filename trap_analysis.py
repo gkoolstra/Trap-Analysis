@@ -16,6 +16,7 @@ try:
     from Common import kfit, common
 except:
     print "Could not load import kfit and common. Please do so manually."
+import re
 
 def get_constants():
     """
