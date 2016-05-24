@@ -254,7 +254,7 @@ def fit_electron_potential(x, V, fitdomain=None, do_plot=False, plot_title=''):
         plt.ylabel("Potential (V)")
         plt.xlim(min(x), max(x))
         plt.title(plot_title)
-        plt.legend(loc=0)
+        #plt.legend(loc=0)
 
     return fr, ferr
 
