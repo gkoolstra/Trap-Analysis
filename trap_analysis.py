@@ -49,7 +49,10 @@ def load_dsp(df):
 
     nodes = nodes.reshape((nodes.shape[0]/3, 3))
 
-    return elements, nodes, elem_solution[3:]
+    line_nr = 90
+    bounding_box = np.array(re.findall(r"\((.*?)\)", data[line_nr-1])[0].split(', '), dtype=float)
+
+    return elements, nodes, elem_solution[3:], bounding_box
 
 def select_domain(X, Y, Esquared, xdomain=None, ydomain=None):
     """
