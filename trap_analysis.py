@@ -181,7 +181,7 @@ def load_maxwell_data(df, do_plot=True, do_log=True, xlim=None, ylim=None, clim=
     return X, Y, E
 
 
-def load_potentials(fn_resonator, fn_currentloop, fn_leftgate, fn_midgate, fn_rightgate):
+def load_potentials(fn_resonator, fn_currentloop, fn_resguard, fn_centerguard, fn_trapguard):
     """
     Load the 5 potential files.
     :param fn_resonator: Resonator filename
@@ -192,8 +192,8 @@ def load_potentials(fn_resonator, fn_currentloop, fn_leftgate, fn_midgate, fn_ri
     :return: Returns a list of dictionaries, each dictionary has keys 'V', 'x', and 'y'
     """
     output = list()
-    potential_names = ['resonator', 'currentloop', 'leftgate', 'midgate', 'rightgate']
-    potential_fns = [fn_resonator, fn_currentloop, fn_leftgate, fn_midgate, fn_rightgate]
+    potential_names = ['resonator', 'trap', 'resonatorguard', 'centerguard', 'trapguard']
+    potential_fns = [fn_resonator, fn_currentloop, fn_resguard, fn_centerguard, fn_trapguard]
     for name, fn in zip(potential_names, potential_fns):
         if fn[-4:] == '.fld':
             x, y, V = load_maxwell_data(fn, do_log=False, figsize=(6.,5.), cmap=plt.cm.viridis)
