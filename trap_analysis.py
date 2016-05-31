@@ -12,10 +12,17 @@ Typical workflow:
 from tabulate import tabulate
 import numpy as np
 from matplotlib import pyplot as plt
+
 try:
     from Common import kfit, common
 except:
-    print "Could not load import kfit and common. Please do so manually."
+    print "Could not import kfit and common. Please do so manually."
+
+try:
+    from BEM import interpolate_slow
+except:
+    print "Could not import BEM module. Please do so manually."
+
 import re
 
 def get_constants():
@@ -195,8 +202,12 @@ def load_potentials(fn_resonator, fn_currentloop, fn_leftgate, fn_midgate, fn_ri
 
             output.append({'name' : name, 'V' : np.array(V, dtype=np.float64),
                            'x' : np.array(x, dtype=np.float64), 'y' : np.array(y, dtype=np.float64)})
-        else:
-            print "Extension not yet supported by this code!"
+        elif fn[-4:] == '.dsp':
+            elements, nodes, elem_solution, bounding_box = load_dsp(fn)
+            x, y, V = interpolate_slow.prepare_for_interpolation(elements, nodes, elem_solution)
+
+            output.append({'name' : name, 'V' : np.array(V, dtype=np.float64),
+                           'x' : np.array(x, dtype=np.float64), 'y' : np.array(y, dtype=np.float64)})
 
     return output
 
@@ -324,8 +335,6 @@ def sweep_trap_coordinate(x, y, potentials, coefficients, sweep_data, sweep_coor
                  fmt='o', ecolor='red', **common.plot_opt('red'))
     plt.xlabel('%s ($\mu$m)'%(sweep_coordinate))
     plt.ylabel('$\omega_e/2\pi$ (GHz)')
-
-
 
 def sweep_electrode_voltage(x, y, potentials, coefficients, sweep_voltage, sweep_electrode_idx,
                             fitdomain=(-0.5E-6,+0.5E-6), clim=(-0.5, 0.5), do_plot=False, print_report=False,
