@@ -206,6 +206,11 @@ def load_potentials(fn_resonator, fn_currentloop, fn_leftgate, fn_midgate, fn_ri
             elements, nodes, elem_solution, bounding_box = load_dsp(fn)
             x, y, V = interpolate_slow.prepare_for_interpolation(elements, nodes, elem_solution)
 
+            xcenter = np.mean(bounding_box[0:2])
+            ycenter = np.mean(bounding_box[2:4])
+            x -= xcenter
+            y -= ycenter
+
             output.append({'name' : name, 'V' : np.array(V, dtype=np.float64),
                            'x' : np.array(x, dtype=np.float64), 'y' : np.array(y, dtype=np.float64)})
 
