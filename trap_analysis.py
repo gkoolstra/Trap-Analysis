@@ -92,8 +92,8 @@ def select_domain(X, Y, Esquared, xdomain=None, ydomain=None):
             x = X[:,0]
             y = Y[0,:]
         else:
-            print r"Shapes of X, Y and Esquared are not consistent:\nShape X: %d x %d\nShape Y: %d x %d\nShape Esquared: %d x %d "\
-              %(np.shape(X)[0], np.shape(X)[1], np.shape(Y)[0], np.shape(Y)[1], np.shape(Esquared)[0], np.shape(Esquared)[1])
+            print r"Shapes of X, Y and Esquared are not consistent:\nShape X: % \nShape Y: %\nShape Esquared: %"\
+              %(np.shape(X), np.shape(Y), np.shape(Esquared))
             return
 
         x_cut = x[np.logical_and(x>=xmin, x<=xmax)]
