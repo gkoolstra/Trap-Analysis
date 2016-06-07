@@ -156,11 +156,14 @@ class EOMSolver:
             plt.plot(x_interp*1E6, self.DC_curvature_data(x_interp), '-k', label='Interpolated')
             plt.legend(loc=0)
             plt.title("DC curvature from FEM data")
+            plt.xlim(np.min(x_interp*1E6), np.max(x_interp*1E6))
+            plt.ylabel(r"$\partial^2 V_\mathrm{dc}/\partial x^2$")
         else:
             plt.plot(x*1E6, self.DC_potential(x, *p), '-', color='darkorange', **kwargs)
             plt.title("DC potential")
+            plt.xlim(np.min(x*1E6), np.max(x*1E6))
+            plt.ylabel(r"$V_\mathrm{dc}$")
 
-        plt.xlim(np.min(x*1E6), np.max(x*1E6))
         plt.xlabel('x ($\mu$m)')
 
     def plot_rf_potential(self, x, *p, **kwargs):
@@ -176,9 +179,12 @@ class EOMSolver:
             plt.plot(x_interp*1E6, self.RF_efield_data(x_interp), '-k', label='Interpolated')
             plt.legend(loc=0)
             plt.title(r"$E_x$ from FEM data")
+            plt.xlim(np.min(x_interp)*1E6, np.max(x_interp)*1E6)
+            plt.ylabel(r"$E_x$")
         else:
             plt.plot(x*1E6, self.RF_potential(x, *p), '-', color='lightblue', **kwargs)
             plt.title("RF potential")
+            plt.xlim(np.min(x)*1E6, np.max(x)*1E6)
+            plt.ylabel(r"$U_\mathrm{RF}$")
 
-        plt.xlim(np.min(x)*1E6, np.max(x)*1E6)
         plt.xlabel('x ($\mu$m)')
