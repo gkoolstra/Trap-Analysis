@@ -118,7 +118,7 @@ class ResonatorSolver:
             K[1:,0] = K[0,1:] = c['e']/C * self.RF_efield(xe, self.rf_params) # Coupling terms
 
         kij_plus = np.zeros((num_electrons, num_electrons))
-        for idx in tqdm(range(num_electrons)):
+        for idx in range(num_electrons):
             rij = np.sqrt((xe[idx]-xe)**2 + (ye[idx]-ye)**2)
             tij = np.arctan((ye[idx]-ye)/(xe[idx]-xe))
             kij_plus[idx,:] = 1/4. * c['e']**2/(4*np.pi*c['eps0']) * (1 + 3*np.cos(2*tij))/rij**3
@@ -157,12 +157,12 @@ class ResonatorSolver:
             plt.legend(loc=0)
             plt.title("DC curvature from FEM data")
             plt.xlim(np.min(x_interp*1E6), np.max(x_interp*1E6))
-            plt.ylabel(r"$\partial^2 V_\mathrm{dc}/\partial x^2$")
+            plt.ylabel(r"$\partial^2 V_\mathrm{dc}/\partial x^2$ ($V$/$m^2$)")
         else:
             plt.plot(x*1E6, self.DC_potential(x, *p), '-', color='darkorange', **kwargs)
             plt.title("DC potential")
             plt.xlim(np.min(x*1E6), np.max(x*1E6))
-            plt.ylabel(r"$V_\mathrm{dc}$")
+            plt.ylabel(r"$V_\mathrm{dc}$ (V)")
 
         plt.xlabel('x ($\mu$m)')
 
@@ -180,11 +180,11 @@ class ResonatorSolver:
             plt.legend(loc=0)
             plt.title(r"$E_x$ from FEM data")
             plt.xlim(np.min(x_interp)*1E6, np.max(x_interp)*1E6)
-            plt.ylabel(r"$E_x$")
+            plt.ylabel(r"$E_x$ (V/m)")
         else:
             plt.plot(x*1E6, self.RF_potential(x, *p), '-', color='lightblue', **kwargs)
             plt.title("RF potential")
             plt.xlim(np.min(x)*1E6, np.max(x)*1E6)
-            plt.ylabel(r"$U_\mathrm{RF}$")
+            plt.ylabel(r"$U_\mathrm{RF}$ (V/m)")
 
         plt.xlabel('x ($\mu$m)')
