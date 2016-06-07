@@ -27,14 +27,21 @@ class EOMSolver:
         self.x = sympy.Symbol('x')
         self.use_FEM_data = True if use_FEM_data else False
 
+        # You either have to specify FEM data points, in the following form:
+        # self.x_RF_FEM =
+        # self.U_RF_FEM =
+        # self.x_DC_FEM =
+        # self.V_DC_FEM =
+        # Or you can specify the fit values from fits to the potentials as follows:
+        # self.dc_params = [a0, a1, a2] from a fit to the DC potential in V
+        # self.rf_params = [a0, a1] from a fit to the RF potential in V
+
     def RF_efield_data(self, xeval):
-        xdata, Udata = self.x_RF_FEM, self.U_RF_FEM
-        Ex_RF = interp1d(xdata, Udata, kind='cubic')
+        Ex_RF = interp1d(self.x_RF_FEM, self.U_RF_FEM, kind='cubic')
         return Ex_RF(xeval)
 
     def DC_curvature_data(self, xeval):
-        xdata, Udata = self.x_DC_FEM, self.V_DC_FEM
-        DC_curv = interp1d(xdata, Udata, kind='cubic')
+        DC_curv = interp1d(self.x_DC_FEM, self.V_DC_FEM, kind='cubic')
         return DC_curv(xeval)
 
     def RF_potential(self, xeval, *p):
@@ -79,7 +86,7 @@ class EOMSolver:
         a0, a1, a2 = p
         return a1
 
-    def setup_eom(self, electron_positions, dc_params, rf_params):
+    def setup_eom(self, electron_positions):
         """
         Set up the Matrix used for determining the electron frequency.
         :param electron_positions: Electron positions, stacked in a column
@@ -108,7 +115,7 @@ class EOMSolver:
         if self.use_FEM_data:
             K[1:,0] = K[0,1:] = c['e']/C * self.RF_efield_data(xe)
         else:
-            K[1:,0] = K[0,1:] = c['e']/C * self.RF_efield(xe, *rf_params) # Coupling terms
+            K[1:,0] = K[0,1:] = c['e']/C * self.RF_efield(xe, self.rf_params) # Coupling terms
 
         kij_plus = np.zeros((num_electrons, num_electrons))
         for idx in tqdm(range(num_electrons)):
@@ -121,7 +128,7 @@ class EOMSolver:
         if self.use_FEM_data:
             K_block = -kij_plus + np.diag(2*c['e']*self.DC_curvature_data(xe) + np.sum(kij_plus, axis=1))
         else:
-            K_block = -kij_plus + np.diag(2*c['e']*self.DC_curvature(xe, *dc_params) + np.sum(kij_plus, axis=1))
+            K_block = -kij_plus + np.diag(2*c['e']*self.DC_curvature(xe, self.dc_params) + np.sum(kij_plus, axis=1))
 
         K[1:,1:] = K_block
 
