@@ -152,7 +152,7 @@ class EOMSolver:
         """
         if self.use_FEM_data:
             x_interp = np.linspace(np.min(self.x_DC_FEM), np.max(self.x_DC_FEM), 1E4+1)
-            plt.plot(self.x_DC_FEM, self.V_DC_FEM, 'o', **common.plot_opt('darkorange'))
+            plt.plot(self.x_DC_FEM*1E6, self.V_DC_FEM, 'o', **common.plot_opt('darkorange'))
             plt.plot(x_interp*1E6, self.DC_curvature_data(x_interp), '-k', label='Interpolated')
             plt.legend(loc=0)
             plt.title("DC curvature from FEM data")
@@ -175,7 +175,7 @@ class EOMSolver:
         """
         if self.use_FEM_data:
             x_interp = np.linspace(np.min(self.x_RF_FEM), np.max(self.x_RF_FEM), 1E4+1)
-            plt.plot(self.x_RF_FEM, self.U_RF_FEM, 'o', **common.plot_opt('darkorange'))
+            plt.plot(self.x_RF_FEM*1E6, self.U_RF_FEM, 'o', **common.plot_opt('darkorange'))
             plt.plot(x_interp*1E6, self.RF_efield_data(x_interp), '-k', label='Interpolated')
             plt.legend(loc=0)
             plt.title(r"$E_x$ from FEM data")
