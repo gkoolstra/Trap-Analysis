@@ -19,7 +19,7 @@ def get_resonator_constants():
     constants = {'f0' : 6.0E9, 'Z0' : 50.0, 'Q' : 10000, 'P' : -100}
     return constants
 
-class EOMSolver:
+class ResonatorSolver:
 
     def __init__(self, use_FEM_data=True):
         self.physical_constants = trap_analysis.get_constants()
