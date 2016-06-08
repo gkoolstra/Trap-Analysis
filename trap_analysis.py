@@ -13,6 +13,7 @@ from tabulate import tabulate
 import numpy as np
 from matplotlib import pyplot as plt
 from import_data import load_dsp, load_maxwell_data, select_domain
+from resonator_analysis import get_resonator_constants
 
 try:
     from Common import kfit, common
@@ -51,8 +52,11 @@ class TrapSolver:
     -
     """
 
-    def __init__(self):
+    def __init__(self, use_FEM_data=True):
         self.__version__ = 1.0
+        self.use_FEM_data = use_FEM_data
+        self.physical_constants = get_constants()
+        self.resonator_constants = get_resonator_constants()
 
     def load_potentials(self, fn_resonator, fn_currentloop, fn_resguard, fn_centerguard, fn_trapguard):
         """
@@ -355,3 +359,74 @@ class TrapSolver:
         EVals = np.linalg.eigvals(Mat)
 
         return np.sqrt(EVals)/(2*np.pi)
+
+    def setup_eom(self, electron_positions):
+        """
+        Set up the Matrix used for determining the electron frequency.
+        You must make sure to have one of the following:
+        if use_FEM_data = True, you must supply RF_efield_data
+            - self.x_RF_FEM: x-axis for self.U_RF_FEM (units: m)
+            - self.U_RF_FEM: RF E-field (units: V/m)
+            - self.x_DC_FEM: x-axis for self.V_DC_FEM (units: m)
+            - self.V_DC_FEM: Curvature a1(x), in V_DC(x) = a0 + a1(x-a2)**2 (units: V/m**2)
+        if use_FEM_data = False you must supply:
+            - self.dc_params: [a0, a1, a2] --> a0 + a1*(x-a2)**2
+            - self.rf_params: [a0, a1] --> a0 + a1*x
+
+        :param electron_positions: Electron positions, in the form
+                np.array([[x0, x1, ...],
+                          [y0, y1, ...)
+        :return: M^(-1) * K
+        """
+        c = self.physical_constants
+        r = self.resonator_constants
+
+        omega0 = 2*np.pi*r['f0']
+        L = r['Z0']/omega0
+        C = 1/(omega0**2 * L)
+
+        num_electrons = np.shape(electron_positions)[1]
+        xe, ye = np.array(electron_positions)
+
+        # Set up the inverse of the mass matrix first
+        diag_invM = 1/c['m_e'] * np.ones(2 * num_electrons + 1)
+        diag_invM[0] = 1/L
+        invM = np.diag(diag_invM)
+
+        # Set up the kinetic matrix next
+        Kij_plus, Kij_minus, Lij = np.zeros(np.shape(invM)), np.zeros(np.shape(invM)), np.zeros(np.shape(invM))
+        K = np.zeros((2*num_electrons+1, 2*num_electrons+1))
+        # Row 1 and column 1 only have bare cavity information, and cavity-electron terms
+        K[0,0] = 1/C
+        K[1:num_electrons+1,0] = K[0,1:num_electrons+1] = c['e']/C * self.Ex(xe, ye)
+        K[num_electrons+1:2*num_electrons+1,0] = K[0,num_electrons+1:2*num_electrons+1] = c['e']/C * self.Ey(xe, ye)
+
+        kij_plus = np.zeros((num_electrons, num_electrons))
+        kij_minus = np.zeros((num_electrons, num_electrons))
+        lij = np.zeros((num_electrons, num_electrons))
+        for idx in range(num_electrons):
+            rij = np.sqrt((xe[idx]-xe)**2 + (ye[idx]-ye)**2)
+            tij = np.arctan((ye[idx]-ye)/(xe[idx]-xe))
+            kij_plus[idx,:] = 1/4. * c['e']**2/(4*np.pi*c['eps0']) * (1 + 3*np.cos(2*tij))/rij**3
+            kij_minus[idx,:] = 1/4. * c['e']**2/(4*np.pi*c['eps0']) * (1 - 3*np.cos(2*tij))/rij**3
+            lij[idx,:] = 1/4. * c['e']**2/(4*np.pi*c['eps0']) * 3*np.sin(2*tij)/rij**3
+
+        np.fill_diagonal(kij_plus, 0)
+        np.fill_diagonal(kij_minus, 0)
+        np.fill_diagonal(lij, 0)
+
+        Kij_plus = -kij_plus + np.diag(2*c['e']*self.curv_xx(xe, ye) + np.sum(kij_plus, axis=1))
+        Kij_minus = -kij_minus + np.diag(2*c['e']*self.curv_yy(xe, ye) + np.sum(kij_minus, axis=1))
+        Lij = -lij + np.diag(2*c['e']*self.curv_xy(xe, ye) + np.sum(lij, axis=1))
+
+        K[1:num_electrons+1,1:num_electrons+1] = Kij_plus
+        K[num_electrons+1:2*num_electrons+1, num_electrons+1:2*num_electrons+1] = Kij_minus
+        K[1:num_electrons+1, num_electrons+1:2*num_electrons+1] = Lij
+        K[num_electrons+1:2*num_electrons+1, 1:num_electrons+1] = Lij
+
+        return np.dot(invM, K)
+
+
+
+
+

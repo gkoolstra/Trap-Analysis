@@ -89,9 +89,19 @@ class ResonatorSolver:
     def setup_eom(self, electron_positions):
         """
         Set up the Matrix used for determining the electron frequency.
-        :param electron_positions: Electron positions, stacked in a column
-        :param dc_params: [a0, a1, a2] --> a0 + a1*(x-a2)**2
-        :param rf_params: [a0, a1] --> a0 + a1*x
+        You must make sure to have one of the following:
+        if use_FEM_data = True, you must supply RF_efield_data
+            - self.x_RF_FEM: x-axis for self.U_RF_FEM (units: m)
+            - self.U_RF_FEM: RF E-field (units: V/m)
+            - self.x_DC_FEM: x-axis for self.V_DC_FEM (units: m)
+            - self.V_DC_FEM: Curvature a1(x), in V_DC(x) = a0 + a1(x-a2)**2 (units: V/m**2)
+        if use_FEM_data = False you must supply:
+            - self.dc_params: [a0, a1, a2] --> a0 + a1*(x-a2)**2
+            - self.rf_params: [a0, a1] --> a0 + a1*x
+
+        :param electron_positions: Electron positions, in the form
+                np.array([[x0, x1, ...],
+                          [y0, y1, ...)
         :return: M^(-1) * K
         """
         c = self.physical_constants
