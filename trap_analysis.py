@@ -360,6 +360,46 @@ class TrapSolver:
 
         return np.sqrt(EVals)/(2*np.pi)
 
+    def find_nearest_point(self, xe, ye):
+        x_idx = common.find_nearest(self.x_data[0,:], xe)
+        y_idx = common.find_nearest(self.y_data[:,0], ye)
+        return y_idx, x_idx
+
+    def Ex(self, xe, ye):
+        output = list()
+        for xi, yi in zip(xe, ye):
+            row, col = self.find_nearest_point(xi, yi)
+            output.append(self.Ex_data[row,col])
+        return np.array(output)
+
+    def Ey(self, xe, ye):
+        output = list()
+        for xi, yi in zip(xe, ye):
+            row, col = self.find_nearest_point(xi, yi)
+            output.append(self.Ey_data[row,col])
+        return np.array(output)
+
+    def curv_xy(self, xe, ye):
+        output = list()
+        for xi, yi in zip(xe, ye):
+            row, col = self.find_nearest_point(xi, yi)
+            output.append(self.curv_xy_data[row,col])
+        return np.array(output)
+
+    def curv_xx(self, xe, ye):
+        output = list()
+        for xi, yi in zip(xe, ye):
+            row, col = self.find_nearest_point(xi, yi)
+            output.append(self.curv_xx_data[row,col])
+        return np.array(output)
+
+    def curv_yy(self, xe, ye):
+        output = list()
+        for xi, yi in zip(xe, ye):
+            row, col = self.find_nearest_point(xi, yi)
+            output.append(self.curv_yy_data[row,col])
+        return np.array(output)
+
     def setup_eom(self, electron_positions):
         """
         Set up the Matrix used for determining the electron frequency.
