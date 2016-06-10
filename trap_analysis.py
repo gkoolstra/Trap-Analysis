@@ -466,7 +466,14 @@ class TrapSolver:
 
         return np.dot(invM, K)
 
-
+    def solve_eom(self, LHS):
+        """
+        Solves the eigenvalues and eigenvectors for the system of equations constructed with setup_eom()
+        :param LHS: matrix product of M^(-1) K
+        :return: Eigenvalues, Eigenvectors
+        """
+        EVals, EVecs = np.linalg.eig(LHS)
+        return EVals, EVecs
 
 
 
