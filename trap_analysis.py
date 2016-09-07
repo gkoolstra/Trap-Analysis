@@ -475,5 +475,8 @@ class TrapSolver:
         EVals, EVecs = np.linalg.eig(LHS)
         return EVals, EVecs
 
+    def eigenvalues_to_frequency(self, evals):
+        return np.sqrt(evals)/(2*np.pi)
+
 
 

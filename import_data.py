@@ -13,7 +13,7 @@ def load_dsp(df):
     Loads a .dsp file from Maxwell and extracts elements, nodes and the solution at the nodes.
     For this code to work, the data must have been saved as a dsp file, with only a single plot in the Fields tab.
     :param df: File path of the data file
-    :return: elements, node, element solution
+    :return: elements, node, element solution, bounding box
     """
     with open(df, 'r') as myfile:
         data = myfile.readlines()
