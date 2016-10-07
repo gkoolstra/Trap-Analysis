@@ -1,6 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
-import trap_analysis, sympy
+from . import trap_analysis
+import sympy
 from tqdm import tqdm
 from sympy.utilities.lambdify import lambdify, implemented_function
 from sympy import mpmath
@@ -9,7 +10,7 @@ from scipy.interpolate import interp1d
 try:
     from Common import kfit, common
 except:
-    print "Could not import kfit and common. Please do so manually."
+    print("Could not import kfit and common. Please do so manually.")
 
 def get_resonator_constants():
     """

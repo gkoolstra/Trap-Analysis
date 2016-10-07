@@ -5,7 +5,7 @@ import re
 try:
     from Common import kfit, common
 except:
-    print "Could not import kfit and common. Please do so manually."
+    print("Could not import kfit and common. Please do so manually.")
 
 
 def load_dsp(df):
@@ -67,7 +67,8 @@ def select_domain(X, Y, Esquared, xdomain=None, ydomain=None):
             x = X[:,0]
             y = Y[0,:]
         else:
-            print "Shapes of X, Y and Esquared are not consistent:\nShape X: %s \nShape Y: %s\nShape Esquared: %s"%(np.shape(X), np.shape(Y), np.shape(Esquared))
+            print("Shapes of X, Y and Esquared are not consistent:\nShape X: %s \nShape Y: %s\nShape Esquared: %s" % (
+            np.shape(X), np.shape(Y), np.shape(Esquared)))
             return
 
         x_cut = x[np.logical_and(x>=xmin, x<=xmax)]
@@ -80,8 +81,12 @@ def select_domain(X, Y, Esquared, xdomain=None, ydomain=None):
 
         return x_cut, y_cut, Esquared_cut
     else:
-        print "Shapes of X, Y and Esquared are not consistent:\nShape X: %d x %d\nShape Y: %d x %d\nShape Esquared: %d x %d "\
-              %(np.shape(X)[0], np.shape(X)[1], np.shape(Y)[0], np.shape(Y)[1], np.shape(Esquared)[0], np.shape(Esquared)[1])
+        print(
+            "Shapes of X, Y and Esquared are not consistent:\nShape X: %d x %d\nShape Y: %d x %d\nShape Esquared: %d "
+            "x %d "
+            % (np.shape(X)[0], np.shape(X)[1], np.shape(Y)[0], np.shape(Y)[1], np.shape(Esquared)[0],
+               np.shape(Esquared)[1]))
+
 
 def load_maxwell_data(df, do_plot=True, do_log=True, xlim=None, ylim=None, clim=None,
                        figsize=(6.,12.), plot_axes='xy', cmap=plt.cm.Spectral):

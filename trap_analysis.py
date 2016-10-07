@@ -12,18 +12,18 @@ Typical workflow:
 from tabulate import tabulate
 import numpy as np
 from matplotlib import pyplot as plt
-from import_data import load_dsp, load_maxwell_data, select_domain
-from resonator_analysis import get_resonator_constants
+from .import_data import load_dsp, load_maxwell_data, select_domain
+from .resonator_analysis import get_resonator_constants
 
 try:
     from Common import kfit, common
 except:
-    print "Could not import kfit and common. Please do so manually."
+    print("Could not import kfit and common. Please do so manually.")
 
 try:
     from BEM import interpolate_slow
 except:
-    print "Could not import BEM module. Please do so manually."
+    print("Could not import BEM module. Please do so manually.")
 
 def get_constants():
     """
@@ -170,7 +170,7 @@ class TrapSolver:
         sigma_f = 1/(4*np.pi) * np.sqrt(-2*c['e']*1E12/(fr[1]*c['m_e'])) * ferr[1]
 
         if verbose:
-            print "f = %.3f +/- %.3f GHz"%(f/1E9, sigma_f/1E9)
+            print("f = %.3f +/- %.3f GHz" % (f / 1E9, sigma_f / 1E9))
 
         return f, sigma_f
 
@@ -220,9 +220,9 @@ class TrapSolver:
             efreqs_err.append(sigma_f)
 
         if print_report:
-            print tabulate(zip(sweep_data*1E6, np.array(efreqs)/1E9, np.array(efreqs_err)/1E9),
-                           headers=[sweep_coordinate+" (um)", 'f_min (GHz)', 'sigma_f (GHz)'],
-                           tablefmt="rst", floatfmt=".3f", numalign="center", stralign='center')
+            print(tabulate(zip(sweep_data * 1E6, np.array(efreqs) / 1E9, np.array(efreqs_err) / 1E9),
+                           headers=[sweep_coordinate + " (um)", 'f_min (GHz)', 'sigma_f (GHz)'],
+                           tablefmt="rst", floatfmt=".3f", numalign="center", stralign='center'))
 
         plt.figure()
         plt.title("Electron frequency vs. position inside trap")
@@ -306,9 +306,9 @@ class TrapSolver:
             sigmas_center.append(sigma_f)
 
         if print_report:
-            print tabulate(zip(sweep_voltage, np.array(f_minimum)/1E9, np.array(f_center)/1E9),
+            print(tabulate(zip(sweep_voltage, np.array(f_minimum) / 1E9, np.array(f_center) / 1E9),
                            headers=['V', 'f_min (GHz)', 'f_ctr (GHz)'],
-                           tablefmt="rst", floatfmt=".3f", numalign="center", stralign='center')
+                           tablefmt="rst", floatfmt=".3f", numalign="center", stralign='center'))
 
         evals = np.array(evals)
 
