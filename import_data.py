@@ -29,7 +29,7 @@ def load_dsp(df):
     nodes = np.array(re.findall(r"\((.*?)\)", data[line_nr[1]-1])[0].split(', '), dtype=float)
     elem_solution = np.array(re.findall(r"\((.*?)\)", data[line_nr[2]-1])[0].split(', '), dtype=float)
 
-    nodes = nodes.reshape((nodes.shape[0]/3, 3))
+    nodes = nodes.reshape((int(nodes.shape[0]/3), 3))
 
     line_nr = 90
     bounding_box = np.array(re.findall(r"\((.*?)\)", data[line_nr-1])[0].split(', '), dtype=float)
