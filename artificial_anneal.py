@@ -88,7 +88,7 @@ class ConvergenceMonitor:
         plt.colorbar()
 
         if self.save_path is not None:
-            fig.savefig(os.path.join(self.save_path, '%.5d.png' % (self.call_counter)), bbox_inches='tight')
+            fig.savefig(os.path.join(self.save_path, '%.5d.png' % (self.call_counter)), bbox_inches='tight', dpi=300)
         else:
             print("Please specify a save path when initiating ConvergenceMonitor")
 
@@ -194,6 +194,15 @@ class ElectrostaticPotential:
         """
         return self.interpolator.ev(xi, yi, dx=1, dy=0)
 
+    def ddVdx(self, xi, yi):
+        """
+        Second derivative of the electrostatic potential in the x-direction.
+        :param xi: a 1D array, or float
+        :param yi: a 1D array or float
+        :return:
+        """
+        return self.interpolator.ev(xi, yi, dx=2, dy=0)
+
     def dVdy(self, xi, yi):
         """
         Derivative of the electrostatic potential in the y-direction
@@ -202,6 +211,15 @@ class ElectrostaticPotential:
         :return:
         """
         return self.interpolator.ev(xi, yi, dx=0, dy=1)
+
+    def ddVdy(self, xi, yi):
+        """
+        Second derivative of the electrostatic potential in the y-direction.
+        :param xi: a 1D array, or float
+        :param yi: a 1D array or float
+        :return:
+        """
+        return self.interpolator.ev(xi, yi, dx=0, dy=2)
 
     def grad_Vee(self, xi, yi, eps=1E-15):
         """
@@ -276,7 +294,7 @@ class PostProcess:
 
         return ns
 
-    def save_snapshot(self, r, xext=None, yext=None, Uext=None, figsize=(12.,3.), clim=(-1,0), common=None):
+    def save_snapshot(self, r, xext=None, yext=None, Uext=None, figsize=(12.,3.), clim=(-1,0), common=None, title=""):
         """
         Save a picture with the electron positions on top of the electrostatic potential data.
         :param r: Electron x,y coordinate pairs
@@ -303,6 +321,7 @@ class PostProcess:
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
         plt.colorbar()
+        plt.title(title)
 
         if self.save_path is not None and common is not None:
             common.save_figure(fig, save_path=self.save_path)
@@ -325,7 +344,7 @@ class PostProcess:
             file_name = "%.5d.npz"%(number)
             number += 1
 
-        print("Saving file to %s ..."%(os.path.join(self.save_path, file_name)))
+        #print("Saving file to %s ..."%(os.path.join(self.save_path, file_name)))
 
         np.savez(os.path.join(self.save_path, file_name), **kwargs)
 
