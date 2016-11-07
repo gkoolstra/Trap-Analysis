@@ -1,12 +1,13 @@
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.optimize import approx_fprime
-from scipy.interpolate import RectBivariateSpline
+from scipy.optimize import approx_fprime, minimize
+from scipy.interpolate import RectBivariateSpline, UnivariateSpline
 import os
+from termcolor import cprint
 
 class ConvergenceMonitor:
     def __init__(self, Uopt, grad_Uopt, N, Uext=None, xext=None, yext=None, verbose=True, eps=1E-12, save_path=None,
-                 figsize=(12.,3.)):
+                 figsize=(12.,3.), coordinate_transformation=None):
         """
         To be used with scipy.optimize.minimize as a call back function. One has two choices for call-back functions:
         - monitor_convergence: print the status of convergence (value of Uopt and norm of grad_Uopt)
@@ -35,6 +36,7 @@ class ConvergenceMonitor:
         self.grad_Uopt = grad_Uopt
         self.xext, self.yext, self.Uext = xext, yext, Uext
         self.figsize = figsize
+        self.coordinate_transformation = coordinate_transformation
 
     def monitor_convergence(self, xk):
         """
@@ -82,7 +84,13 @@ class ConvergenceMonitor:
             plt.xlim(np.min(xext) * 1E6, np.max(xext) * 1E6)
             plt.ylim(np.min(yext) * 1E6, np.max(yext) * 1E6)
 
-        plt.plot(xk[::2] * 1E6, xk[1::2] * 1E6, 'o', color='deepskyblue')
+        if self.coordinate_transformation is None:
+            electrons_x, electrons_y = xk[::2], xk[1::2]
+        else:
+            r_new = self.coordinate_transformation(xk)
+            electrons_x, electrons_y = r2xy(r_new)
+
+        plt.plot(electrons_x*1E6, electrons_y*1E6, 'o', color='deepskyblue')
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
         plt.colorbar()
@@ -110,7 +118,6 @@ class ConvergenceMonitor:
         os.chdir(self.save_path)
         os.system(r"ffmpeg -r {} -b 1800 -i {} {}".format(int(fps), filenames_in, filename_out))
         os.chdir(curr_dir)
-
 
 class ElectrostaticPotential:
 
@@ -263,7 +270,6 @@ class ElectrostaticPotential:
         gradient += self.grad_Vee(xi, yi) / self.qe
         return gradient
 
-
 class PostProcess:
     def __init__(self, save_path=None):
         """
@@ -357,6 +363,156 @@ class PostProcess:
         """
         return len(np.where(np.logical_and(r[::2] > trap_area_x[0], r[::2] < trap_area_x[1]))[0])
 
+class ResonatorSolver:
+
+    def __init__(self, grid_data, potential_data, box_length=40E-6, spline_order_x=3, smoothing=0):
+        self.interpolator = UnivariateSpline(grid_data, potential_data, k=spline_order_x, s=smoothing, ext=3)
+        self.derivative = self.interpolator.derivative(n=1)
+        self.second_derivative = self.interpolator.derivative(n=2)
+        self.box_y_length = box_length
+
+        # Constants
+        self.qe = 1.602E-19
+        self.eps0 = 8.85E-12
+
+    def map_y_into_domain(self, y, ybounds=None):
+        if ybounds is None:
+            ybounds = (-self.box_y_length / 2, self.box_y_length / 2)
+        return ybounds[0] + (y - ybounds[0]) % (ybounds[1] - ybounds[0])
+
+    def calculate_Rij(self, xi, yi):
+        Xi, Yi = np.meshgrid(xi, yi)
+        Xj, Yj = Xi.T, Yi.T
+
+        Rij_standard = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
+
+        Yi_shifted = Yi.copy()
+        Yi_shifted[Yi_shifted > 0] -= self.box_y_length  # Shift entire box length
+        Yj_shifted = Yi_shifted.T
+
+        Rij_shifted = np.sqrt((Xi - Xj) ** 2 + (Yi_shifted - Yj_shifted) ** 2)
+
+        return np.minimum(Rij_standard, Rij_shifted)
+
+    def calculate_YiYj(self, xi, yi):
+        Xi, Yi = np.meshgrid(xi, yi)
+        Xj, Yj = Xi.T, Yi.T
+
+        Yi_shifted = Yi.copy()
+        Yi_shifted[Yi_shifted > 0] -= self.box_y_length  # Shift entire box length
+        Yj_shifted = Yi_shifted.T
+
+        Rij_standard = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
+        Rij_shifted = np.sqrt((Xi - Xj) ** 2 + (Yi_shifted - Yj_shifted) ** 2)
+
+        YiYj = Yi - Yj
+        YiYj_shifted = Yi_shifted - Yj_shifted
+
+        # Use shifted y-coordinate only in this case:
+        np.copyto(YiYj, YiYj_shifted, where=Rij_shifted<Rij_standard)
+
+        return YiYj
+
+    def V(self, xi, yi):
+        return self.interpolator(xi)
+
+    def Velectrostatic(self, xi, yi):
+        return self.qe * np.sum(self.V(xi, yi))
+
+    def Vee(self, xi, yi, eps=1E-15):
+        yi = self.map_y_into_domain(yi)
+        Rij = self.calculate_Rij(xi, yi)
+        np.fill_diagonal(Rij, eps)
+
+        return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
+
+    def Vtotal(self, r):
+        xi, yi = r[::2], r[1::2]
+        Vtot = self.Velectrostatic(xi, yi)
+        interaction_matrix = self.Vee(xi, yi)
+        np.fill_diagonal(interaction_matrix, 0)
+        Vtot += np.sum(interaction_matrix)
+        return Vtot / self.qe
+
+    def dVdx(self, xi, yi):
+        return self.derivative(xi)
+
+    def ddVdx(self, xi, yi):
+        return self.second_derivative(xi)
+
+    def dVdy(self, xi, yi):
+        return np.zeros(len(xi))
+
+    def ddVdy(self, xi, yi):
+        return np.zeros(len(xi))
+
+    def grad_Vee(self, xi, yi, eps=1E-15):
+        yi = self.map_y_into_domain(yi)
+        Xi, Yi = np.meshgrid(xi, yi)
+        Xj, Yj = Xi.T, Yi.T
+
+        Rij = self.calculate_Rij(xi, yi)
+        np.fill_diagonal(Rij, eps)
+
+        gradx_matrix = np.zeros(np.shape(Rij))
+        grady_matrix = np.zeros(np.shape(Rij))
+        gradient = np.zeros(2 * len(xi))
+
+        gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Xi - Xj) / Rij ** 3
+        np.fill_diagonal(gradx_matrix, 0)
+
+        YiYj = self.calculate_YiYj(xi, yi)
+        grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * YiYj / Rij ** 3
+        np.fill_diagonal(grady_matrix, 0)
+
+        gradient[::2] = np.sum(gradx_matrix, axis=0)
+        gradient[1::2] = np.sum(grady_matrix, axis=0)
+
+        return gradient
+
+    def grad_total(self, r):
+        """
+        Total derivative of the cost function. This may be used in the optimizer to converge faster.
+        :param r: r = np.array([x0, y0, x1, y1, x2, y2, ... , xN, yN])
+        :return: 1D array of length len(r)
+        """
+        xi, yi = r[::2], r[1::2]
+        gradient = np.zeros(len(r))
+        gradient[::2] = self.dVdx(xi, yi)
+        gradient[1::2] = self.dVdy(xi, yi)
+        gradient += self.grad_Vee(xi, yi) / self.qe
+        return gradient
+
+    def thermal_kick_x(self, x, y, T):
+        kB = 1.38E-23
+        qe = 1.602E-19
+        ktrapx = np.abs(qe * self.ddVdx(x, y))
+        return np.sqrt(2 * kB * T / ktrapx)
+
+    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **kwargs):
+
+        electron_initial_positions = solution_data_reference['x']
+        best_result = solution_data_reference
+
+        for n in range(N_perturbations):
+            xi, yi = r2xy(electron_initial_positions)
+            xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
+            electron_perturbed_positions = xy2r(xi_prime, yi)
+
+            res = minimize(cost_function, electron_perturbed_positions, method='CG', **kwargs)
+
+            if res['status'] == 0 and res['fun'] < best_result['fun']:
+                cprint("New minimum was found after perturbing!", "green")
+                best_result = res
+            elif res['status'] == 0 and res['fun'] > best_result['fun']:
+                pass  # No new minimum was found after perturbation, this is quite common.
+            elif res['status'] != 0 and res['fun'] < best_result['fun']:
+                cprint("There is a lower state, but minimizer didn't converge!", "red")
+            elif res['status'] != 0 and res['fun'] > best_result['fun']:
+                cprint("Minimizer didn't converge, but this is not the lowest energy state!", "magenta")
+
+        return best_result
+
 ######################
 ## HELPER FUNCTIONS ##
 ######################
@@ -368,7 +524,6 @@ def r2xy(r):
     :return: np.array([x0, x1, ...]), np.array([y0, y1, ...])
     """
     return r[::2], r[1::2]
-
 
 def xy2r(x, y):
     """
@@ -406,3 +561,9 @@ def map_into_domain(xi, yi, xbounds=(-1,1), ybounds=(-1,1)):
     yi[yi<bottom_boundary] = bottom_boundary
 
     return xi, yi
+
+def thermal_kick_y(x, y, T):
+    kB = 1.38E-23
+    qe = 1.602E-19
+    ktrapy = np.abs(qe * EP.ddVdy(xi=x, yi=y))
+    return np.sqrt(2 * kB * T / ktrapy)
