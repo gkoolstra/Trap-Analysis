@@ -365,7 +365,7 @@ class PostProcess:
 
 class ResonatorSolver:
 
-    def __init__(self, grid_data, potential_data, box_length=40E-6, spline_order_x=3, smoothing=0):
+    def __init__(self, grid_data, potential_data, efield_data=None, box_length=40E-6, spline_order_x=3, smoothing=0):
         self.interpolator = UnivariateSpline(grid_data, potential_data, k=spline_order_x, s=smoothing, ext=3)
         self.derivative = self.interpolator.derivative(n=1)
         self.second_derivative = self.interpolator.derivative(n=2)
@@ -374,6 +374,9 @@ class ResonatorSolver:
         # Constants
         self.qe = 1.602E-19
         self.eps0 = 8.85E-12
+
+        if efield_data is not None:
+            self.Ex_interpolator = UnivariateSpline(grid_data, efield_data, k=spline_order_x, s=smoothing, ext=3)
 
     def map_y_into_domain(self, y, ybounds=None):
         if ybounds is None:
@@ -412,6 +415,9 @@ class ResonatorSolver:
         np.copyto(YiYj, YiYj_shifted, where=Rij_shifted<Rij_standard)
 
         return YiYj
+
+    def Ex(self, xi, yi):
+        return self.Ex_interpolator(xi)
 
     def V(self, xi, yi):
         return self.interpolator(xi)
@@ -497,7 +503,8 @@ class ResonatorSolver:
         for n in range(N_perturbations):
             xi, yi = r2xy(electron_initial_positions)
             xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
-            electron_perturbed_positions = xy2r(xi_prime, yi)
+            yi_prime = yi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(yi))
+            electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
             res = minimize(cost_function, electron_perturbed_positions, method='CG', **kwargs)
 
