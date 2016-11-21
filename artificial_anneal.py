@@ -579,9 +579,7 @@ class CombinedModelSolver:
         Y_res, Y_i = np.meshgrid(self.y_res, yi)
 
         Rij = np.sqrt((X_i - X_res) ** 2 + (Y_i - Y_res) ** 2)
-        np.fill_diagonal(Rij, eps)
         V = self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
-        np.fill_diagonal(V, 0)
         return np.sum(V, axis=1)
 
     def Vee(self, xi, yi, eps=1E-15):
@@ -623,9 +621,7 @@ class CombinedModelSolver:
         Y_res, Y_i = np.meshgrid(self.y_res, yi)
 
         Rij = np.sqrt((X_i - X_res) ** 2 + (Y_i - Y_res) ** 2)
-        np.fill_diagonal(Rij, eps)
         dVdx = - self.qe / (4 * np.pi * self.eps0) * (X_i - X_res) / Rij ** 3
-        np.fill_diagonal(dVdx, 0)
         return np.sum(dVdx, axis=1)
 
     def dVbgdy(self, xi, yi, eps=1E-15):
@@ -639,9 +635,7 @@ class CombinedModelSolver:
         Y_res, Y_i = np.meshgrid(self.y_res, yi)
 
         Rij = np.sqrt((X_i - X_res) ** 2 + (Y_i - Y_res) ** 2)
-        np.fill_diagonal(Rij, eps)
         dVdy = - self.qe / (4 * np.pi * self.eps0) * (Y_i - Y_res) / Rij ** 3
-        np.fill_diagonal(dVdy, 0)
         return np.sum(dVdy, axis=1)
 
     def dVdx(self, xi, yi):
@@ -896,7 +890,14 @@ def factors(n):
     return list(functools.reduce(list.__add__,
                 ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
-def get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None, x0=0E-6, y0=0E-6):
+def is_prime(n):
+    divisors = factors(n)
+    divisors.remove(n)
+    divisors.remove(1)
+    return divisors == list()
+
+def get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None,
+                                      x0=0E-6, y0=0E-6, dx=0.20E-6, dy=0.40E-6):
     """
     Note: N_rows * N_cols must be N_electrons
     :param N_electrons: Number of electrons
@@ -904,29 +905,39 @@ def get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None, x0=
     :param N_cols: Number of columns
     :return: Rectangular electron configuration where r = [x0, y0, x1, y1, ...]
     """
+    add_electrons_later = 0
     if (N_rows is None) or (N_cols is None):
         divisors = factors(N_electrons)
         divisors.remove(N_electrons)
         divisors.remove(1)
 
         if divisors == list():
-            N_rows = N_electrons
-            N_cols = 1
-        else:
-            optimal_index = np.argmin(np.abs(np.array(divisors)-np.sqrt(N_electrons)))
-            N_rows = np.int(divisors[optimal_index])
-            N_cols = np.int(N_electrons/N_rows)
+            # Catch a large prime number and avoid it being one long row.
+            while is_prime(N_electrons):
+                add_electrons_later += 1
+                N_electrons -= 1
+
+            divisors = factors(N_electrons)
+            divisors.remove(N_electrons)
+            divisors.remove(1)
+
+        optimal_index = np.argmin(np.abs(np.array(divisors)-np.sqrt(N_electrons)))
+        N_rows = np.int(divisors[optimal_index])
+        N_cols = np.int(N_electrons/N_rows)
 
     if N_cols * N_rows != N_electrons:
         raise ValueError("N_cols and N_rows are not compatible with N_electrons")
     else:
-        y_separation = 0.40E-6
-        x_separation = 0.20E-6
-        #ys = np.linspace(y0 , y0 + N_cols * y_separation, N_cols)
+        y_separation = dy
+        x_separation = dx
         ys = np.linspace(y0 - (N_cols - 1) / 2. * y_separation, y0 + (N_cols - 1) / 2. * y_separation, N_cols)
         yinit = np.tile(np.array(ys), N_rows)
         xs = np.linspace(x0 - (N_rows - 1) / 2. * x_separation, x0 + (N_rows - 1) / 2. * x_separation, N_rows)
         xinit = np.repeat(xs, N_cols)
+
+    for k in range(add_electrons_later):
+        xinit = np.append(xinit, [x0 + (N_rows + 1) / 2. * x_separation])
+        yinit = np.append(yinit, [y0 - (N_cols - 1 - 2 * k) / 2. * y_separation])
 
     return xy2r(xinit, yinit)
 
@@ -952,6 +963,52 @@ def check_unbounded_electrons(ri, xdomain, ydomain):
         questionable_electrons.append(q)
 
     return len(np.unique(np.array(questionable_electrons)))
+
+def setup_initial_condition(N_electrons, xdomain, ydomain, x0, y0):
+
+    dx, dy = 0.50E-6, 0.50E-6
+    N_electrons_outside = N_electrons
+
+    if check_unbounded_electrons(xy2r([x0], [y0]), xdomain, ydomain):
+        raise ValueError("Center of initial condition lies outside domain!")
+
+    while N_electrons_outside > 0:
+        r_init = get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None, x0=x0, y0=y0, dx=dx, dy=dy)
+        N_electrons_outside = check_unbounded_electrons(r_init, xdomain, ydomain)
+        dx /= 2
+        dy /= 2
+
+    return r_init
+
+def get_electron_density_by_position(ri):
+    """
+    Calculate the electron density based on the nearest neighbor for each electron. The electron density is in m^-2
+    :param ri: Electron x,y coordinate pairs
+    :return: Electron density in m^-2
+    """
+    xi, yi = r2xy(ri)
+    Xi, Yi = np.meshgrid(xi, yi)
+    Xj, Yj = Xi.T, Yi.T
+
+    Rij = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
+    np.fill_diagonal(Rij, 1E10)
+
+    nearest_neighbors = np.min(Rij, axis=1)
+    ns = 1 / (np.mean(nearest_neighbors)) ** 2
+    return ns
+
+def get_electron_density_by_area(ri):
+    """
+    Calculate the electron density based on the smallest bounding box that can be drawn around the electron configuration
+    :param ri: Electron x,y coordinate pairs
+    :return: Electron density in m^-2
+    """
+    xi, yi = r2xy(ri)
+    xmin = np.min(xi)
+    xmax = np.max(xi)
+    ymin = np.min(yi)
+    ymax = np.max(yi)
+    return len(xi)/(np.abs(xmax-xmin)*(ymax-ymin))
 
 def r2xy(r):
     """
