@@ -393,38 +393,25 @@ class ResonatorSolver:
             ybounds = (-self.box_y_length / 2, self.box_y_length / 2)
         return ybounds[0] + (y - ybounds[0]) % (ybounds[1] - ybounds[0])
 
-    def calculate_Rij(self, xi, yi):
-        Xi, Yi = np.meshgrid(xi, yi)
-        Xj, Yj = Xi.T, Yi.T
-
-        Rij_standard = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
-
-        Yi_shifted = Yi.copy()
-        Yi_shifted[Yi_shifted > 0] -= self.box_y_length  # Shift entire box length
-        Yj_shifted = Yi_shifted.T
-
-        Rij_shifted = np.sqrt((Xi - Xj) ** 2 + (Yi_shifted - Yj_shifted) ** 2)
-
-        return np.minimum(Rij_standard, Rij_shifted)
-
-    def calculate_YiYj(self, xi, yi):
+    def calculate_metrics(self, xi, yi):
         Xi, Yi = np.meshgrid(xi, yi)
         Xj, Yj = Xi.T, Yi.T
 
         Yi_shifted = Yi.copy()
         Yi_shifted[Yi_shifted > 0] -= self.box_y_length  # Shift entire box length
         Yj_shifted = Yi_shifted.T
-
-        Rij_standard = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
-        Rij_shifted = np.sqrt((Xi - Xj) ** 2 + (Yi_shifted - Yj_shifted) ** 2)
-
+        XiXj = Xi - Xj
         YiYj = Yi - Yj
         YiYj_shifted = Yi_shifted - Yj_shifted
 
-        # Use shifted y-coordinate only in this case:
-        np.copyto(YiYj, YiYj_shifted, where=Rij_shifted<Rij_standard)
+        Rij_standard = np.sqrt((XiXj) ** 2 + (YiYj) ** 2)
+        Rij_shifted = np.sqrt((XiXj) ** 2 + (YiYj_shifted) ** 2)
+        Rij = np.minimum(Rij_standard, Rij_shifted)
 
-        return YiYj
+        # Use shifted y-coordinate only in this case:
+        np.copyto(YiYj, YiYj_shifted, where=Rij_shifted < Rij_standard)
+
+        return XiXj, YiYj, Rij
 
     def Ex(self, xi, yi):
         return self.Ex_interpolator(xi)
@@ -437,7 +424,7 @@ class ResonatorSolver:
 
     def Vee(self, xi, yi, eps=1E-15):
         yi = self.map_y_into_domain(yi)
-        Rij = self.calculate_Rij(xi, yi)
+        XiXj, YiYj, Rij = self.calculate_metrics(xi, yi)
         np.fill_diagonal(Rij, eps)
 
         return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
@@ -464,20 +451,17 @@ class ResonatorSolver:
 
     def grad_Vee(self, xi, yi, eps=1E-15):
         yi = self.map_y_into_domain(yi)
-        Xi, Yi = np.meshgrid(xi, yi)
-        Xj, Yj = Xi.T, Yi.T
 
-        Rij = self.calculate_Rij(xi, yi)
+        XiXj, YiYj, Rij = self.calculate_metrics(xi ,yi)
         np.fill_diagonal(Rij, eps)
 
         gradx_matrix = np.zeros(np.shape(Rij))
         grady_matrix = np.zeros(np.shape(Rij))
         gradient = np.zeros(2 * len(xi))
 
-        gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Xi - Xj) / Rij ** 3
+        gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * XiXj / Rij ** 3
         np.fill_diagonal(gradx_matrix, 0)
 
-        YiYj = self.calculate_YiYj(xi, yi)
         grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * YiYj / Rij ** 3
         np.fill_diagonal(grady_matrix, 0)
 
