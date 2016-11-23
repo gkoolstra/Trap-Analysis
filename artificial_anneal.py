@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import approx_fprime, minimize
 from scipy.interpolate import RectBivariateSpline, UnivariateSpline
-import os
+import os, ezdxf
 from termcolor import cprint
 from Common import common
 from BEMHelper import interpolate_slow
@@ -530,6 +530,24 @@ class ResonatorSolver:
 
         return best_result
 
+    def draw_resonator_pins(self, pin_width, center_gap, edge_gap, **plot_kwargs):
+        box_y_length = self.box_y_length*1E6
+
+        pin1_x = [-(center_gap/2.+pin_width), -center_gap/2., -center_gap/2., -(center_gap/2.+pin_width),
+                  -(center_gap/2.+pin_width)]
+        pin1_y = [-box_y_length/2., -box_y_length/2., box_y_length/2., box_y_length/2., -box_y_length/2.]
+
+        pin2_x = [(center_gap / 2. + pin_width), center_gap / 2., center_gap / 2., (center_gap / 2. + pin_width),
+                  (center_gap / 2. + pin_width)]
+        pin2_y = [-box_y_length / 2., -box_y_length / 2., box_y_length / 2., box_y_length / 2., -box_y_length / 2.]
+
+        plt.plot(pin1_x, pin1_y, **plot_kwargs)
+        plt.plot(pin2_x, pin2_y, **plot_kwargs)
+        plt.plot([-(edge_gap + pin_width + center_gap/2.), -(edge_gap + pin_width + center_gap/2.)],
+                 [-box_y_length/2., box_y_length/2.], **plot_kwargs)
+        plt.plot([(edge_gap + pin_width + center_gap / 2.), (edge_gap + pin_width + center_gap / 2.)],
+                 [-box_y_length / 2., box_y_length / 2.], **plot_kwargs)
+
 class CombinedModelSolver:
 
     def __init__(self, grid_data_x, grid_data_y, potential_data, resonator_electron_configuration,
@@ -739,7 +757,18 @@ class CombinedModelSolver:
         ktrapy = np.abs(self.qe * self.ddVdy(x, y))
         return np.sqrt(2 * self.kB * T / ktrapy)
 
-    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **kwargs):
+    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **minimizer_options):
+        """
+        This function is to be run after a minimization by scipy.optimize.minimize has already occured.
+        It takes the output of that function in solution_data_reference and tries to find a lower energy state
+        by perturbing the system N_perturbation times at temperature T. See thermal_kick_x and thermal_kick_y.
+        :param cost_function: A function that takes the electron positions and returns the total energy
+        :param N_perturbations: Integer, number of perturbations to find a new minimum
+        :param T: Temperature to perturb the system at. This is used to convert to a motion.
+        :param solution_data_reference: output of scipy.optimize.minimize
+        :param minimizer_options: Dictionary with optimizer options. See scipy.optimize.minimize
+        :return: output of minimize with the lowest evaluated cost function
+        """
 
         electron_initial_positions = solution_data_reference['x']
         best_result = solution_data_reference
@@ -750,7 +779,7 @@ class CombinedModelSolver:
             yi_prime = yi + self.thermal_kick_y(xi, yi, T) * np.random.randn(len(yi))
             electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
-            res = minimize(cost_function, electron_perturbed_positions, method='CG', **kwargs)
+            res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
 
             if res['status'] == 0 and res['fun'] < best_result['fun']:
                 cprint("\tNew minimum was found after perturbing!", "green")
@@ -824,7 +853,7 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, extend_resonator
             yeval = np.linspace(np.min(ydata), np.max(ydata), 101)
 
         xinterp, yinterp, Uinterp = interpolate_slow.evaluate_on_grid(xdata, ydata, Udata, xeval=xeval, yeval=yeval,
-                                                                      clim=(0, 1.0), plot_axes='xy',
+                                                                      clim=(0.0, 1.0), plot_axes='xy',
                                                                       cmap=plt.cm.Spectral_r, plot_mesh=False,
                                                                       plot_data=False)
 
@@ -861,6 +890,10 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, extend_resonator
 
                 for i in range(res_left_idx, np.shape(Uinterp_symmetric)[1]):
                     Uinterp_symmetric[:, i] = Uinterp_symmetric[:, res_left_idx]
+            else:
+                # Also change all the other potential data
+                for i in range(res_left_idx, np.shape(Uinterp_symmetric)[1]):
+                    Uinterp_symmetric[:, i] = Uinterp_symmetric[:, res_left_idx]
 
         if do_plot:
             plt.figure(figsize=(8., 2.))
@@ -885,15 +918,21 @@ def factors(n):
     """
     Get integer divisors of an integer n
     :param n: integer to get the factors from
-    :return:
+    :return: A list of divisors of n
     """
     return list(functools.reduce(list.__add__,
                 ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
 def is_prime(n):
+    """
+    Checks if a number is a prime number.
+    :param n: Integer to check
+    :return: True if n is a prime, False if not
+    """
     divisors = factors(n)
     divisors.remove(n)
-    divisors.remove(1)
+    if n != 1:
+        divisors.remove(1)
     return divisors == list()
 
 def get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None,
@@ -942,6 +981,14 @@ def get_rectangular_initial_condition(N_electrons, N_rows=None, N_cols=None,
     return xy2r(xinit, yinit)
 
 def check_unbounded_electrons(ri, xdomain, ydomain):
+    """
+    This helper function checks if any electrons have escaped the bounds of the simulation box defined by xdomain and
+    ydomain. It returns the number of electrons outside the rectangular domain.
+    :param ri: electron positions
+    :param xdomain: (xmin, xmax)
+    :param ydomain: (ymin, ymax)
+    :return: Number of electrons outside domain
+    """
     xleft, xright = xdomain
     ybottom, ytop = ydomain
 
@@ -964,9 +1011,26 @@ def check_unbounded_electrons(ri, xdomain, ydomain):
 
     return len(np.unique(np.array(questionable_electrons)))
 
-def setup_initial_condition(N_electrons, xdomain, ydomain, x0, y0):
+def setup_initial_condition(N_electrons, xdomain, ydomain, x0, y0, dx=None, dy=None):
+    """
+    This helper function takes away some of the manual labour involved in setting up the initial condition.
+    It sets up a grid of electrons centered at (x0, y0) with spacings dx and dy (optional arguments).
+    It will reduce the spacing dx and dy until all the electrons are within the rectangular domain specified by
+    xdomain and ydomain
+    :param N_electrons: Number of electrons
+    :param xdomain: (xmin, xmax)
+    :param ydomain: (ymin, ymax)
+    :param x0: x-coordinate of the center of the configuration
+    :param y0: y-coordinate of the center of the configuration
+    :param dx: Spacing in the x-direction (optional)
+    :param dy: Spacing in the y-direction (optional)
+    :return: Electron configuration
+    """
+    if dx is None:
+        dx = 0.50E-6
+    if dy is None:
+        dy = 0.50E-6
 
-    dx, dy = 0.50E-6, 0.50E-6
     N_electrons_outside = N_electrons
 
     if check_unbounded_electrons(xy2r([x0], [y0]), xdomain, ydomain):
@@ -1009,6 +1073,60 @@ def get_electron_density_by_area(ri):
     ymin = np.min(yi)
     ymax = np.max(yi)
     return len(xi)/(np.abs(xmax-xmin)*(ymax-ymin))
+
+def mirror_pt(p, axis_angle, axis_pt):
+    """
+    Mirrors point p about a line at angle "axis_angle" intercepting point "axis_pt"
+    :param p:
+    :param axis_angle:
+    :param axis_pt:
+    :return:
+    """
+    theta = axis_angle * np.pi / 180.
+    return (axis_pt[0] + (-axis_pt[0] + p[0]) * np.cos(2 * theta) + (-axis_pt[1] + p[1]) * np.sin(2 * theta),
+            p[1] + 2 * (axis_pt[1] - p[1]) * np.cos(theta) ** 2 + (-axis_pt[0] + p[0]) * np.sin(2 * theta))
+
+def mirror_pts(points, axis_angle, axis_pt):
+    """
+    Mirrors an array of points one by one using mirror_pt
+    :param points:
+    :param axis_angle:
+    :param axis_pt:
+    :return:
+    """
+    return [mirror_pt(p, axis_angle, axis_pt) for p in points]
+
+def draw_electrode_outline(filename, x0=None, y0=None, **plot_kwargs):
+    """
+    Draw an outline of the electrodes from a dxf file.
+    :param filename: full path and filename of the dxf file
+    :param x0: x-coordinate of the origin of the plot (optional)
+    :param y0: y-coordinate of the origin of the plot (optional)
+    :param plot_kwargs: optional arguments for the plot, such as linewidth or color
+    :return:
+    """
+    dwg = ezdxf.readfile(filename)
+    modelspace = dwg.modelspace()
+
+    if x0 is None:
+        x0 = 0
+    if y0 is None:
+        y0 = 0
+
+    for e in list(modelspace):
+        if e.dxftype() == "LWPOLYLINE":
+            with e.points() as points:
+                x, y = list(), list()
+                for p in points:
+                    x.append(p[0] - x0)
+                    y.append(p[1] - y0)
+
+            points = zip(x, y)
+            mirrored_xy = mirror_pts(points, 0, (x0, y0))
+            mirrored_x, mirrored_y = zip(*mirrored_xy)
+
+            plt.plot(x, y, **plot_kwargs)
+            plt.plot(mirrored_x, mirrored_y, **plot_kwargs)
 
 def r2xy(r):
     """
