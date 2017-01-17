@@ -218,7 +218,8 @@ class PostProcess:
 
 class TrapAreaSolver:
 
-    def __init__(self, grid_data_x, grid_data_y, potential_data, spline_order_x=3, spline_order_y=3, smoothing=0):
+    def __init__(self, grid_data_x, grid_data_y, potential_data, spline_order_x=3, spline_order_y=3, smoothing=0,
+                 include_screening=True, screening_length=2*0.8E-6):
         """
         This class is used for constructing the functional forms required for scipy.optimize.minimize.
         It deals with the Maxwell input data, as well as constructs the cost function used in the optimizer.
@@ -234,6 +235,8 @@ class TrapAreaSolver:
                                                 kx=spline_order_x, ky=spline_order_y, s=smoothing)
 
         # Constants
+        self.include_screening = include_screening
+        self.screening_length = screening_length
         self.qe = 1.602E-19
         self.eps0 = 8.85E-12
 
@@ -270,7 +273,10 @@ class TrapAreaSolver:
         Rij = np.sqrt((Xi - Xj) ** 2 + (Yi - Yj) ** 2)
         np.fill_diagonal(Rij, eps)
 
-        return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
+        if self.include_screening:
+            return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij/self.screening_length) / Rij
+        else:
+            return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
 
     def Vtotal(self, r):
         """
@@ -343,10 +349,17 @@ class TrapAreaSolver:
         grady_matrix = np.zeros(np.shape(Rij))
         gradient = np.zeros(2 * len(xi))
 
-        gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Xi - Xj) / Rij ** 3
-        np.fill_diagonal(gradx_matrix, 0)
+        if self.include_screening:
+            gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij/self.screening_length) * \
+                           (Xi - Xj) * (Rij + self.screening_length) / (self.screening_length * Rij ** 3)
+            grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij/self.screening_length) * \
+                           (Yi - Yj) * (Rij + self.screening_length) / (self.screening_length * Rij ** 3)
+        else:
+            gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Xi - Xj) / Rij ** 3
+            grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Yi - Yj) / Rij ** 3
 
-        grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * (Yi - Yj) / Rij ** 3
+
+        np.fill_diagonal(gradx_matrix, 0)
         np.fill_diagonal(grady_matrix, 0)
 
         gradient[::2] = np.sum(gradx_matrix, axis=0)
@@ -369,11 +382,15 @@ class TrapAreaSolver:
 
 class ResonatorSolver:
 
-    def __init__(self, grid_data, potential_data, efield_data=None, box_length=40E-6, spline_order_x=3, smoothing=0):
+    def __init__(self, grid_data, potential_data, efield_data=None, box_length=40E-6, spline_order_x=3, smoothing=0,
+                 include_screening=True, screening_length=2 * 0.8E-6):
         self.interpolator = UnivariateSpline(grid_data, potential_data, k=spline_order_x, s=smoothing, ext=3)
         self.derivative = self.interpolator.derivative(n=1)
         self.second_derivative = self.interpolator.derivative(n=2)
         self.box_y_length = box_length
+
+        self.screening_length = screening_length
+        self.include_screening = include_screening
 
         # Constants
         self.qe = 1.602E-19
@@ -427,7 +444,10 @@ class ResonatorSolver:
         XiXj, YiYj, Rij = self.calculate_metrics(xi, yi)
         np.fill_diagonal(Rij, eps)
 
-        return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
+        if self.include_screening:
+            return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij / self.screening_length) / Rij
+        else:
+            return + 1 / 2. * self.qe ** 2 / (4 * np.pi * self.eps0) * 1 / Rij
 
     def Vtotal(self, r):
         xi, yi = r[::2], r[1::2]
@@ -459,10 +479,16 @@ class ResonatorSolver:
         grady_matrix = np.zeros(np.shape(Rij))
         gradient = np.zeros(2 * len(xi))
 
-        gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * XiXj / Rij ** 3
-        np.fill_diagonal(gradx_matrix, 0)
+        if self.include_screening:
+            gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij/self.screening_length) * \
+                           XiXj * (Rij + self.screening_length) / (self.screening_length * Rij ** 3)
+            grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * np.exp(-Rij/self.screening_length) * \
+                           YiYj * (Rij + self.screening_length) / (self.screening_length * Rij ** 3)
+        else:
+            gradx_matrix = -1 * self.qe ** 2 / (4 * np.pi * self.eps0) * XiXj / Rij ** 3
+            grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * YiYj / Rij ** 3
 
-        grady_matrix = +1 * self.qe ** 2 / (4 * np.pi * self.eps0) * YiYj / Rij ** 3
+        np.fill_diagonal(gradx_matrix, 0)
         np.fill_diagonal(grady_matrix, 0)
 
         gradient[::2] = np.sum(gradx_matrix, axis=0)
@@ -776,8 +802,6 @@ class CombinedModelSolver:
                 cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
 
         return best_result
-
-
 
 ######################
 ## HELPER FUNCTIONS ##
