@@ -206,10 +206,11 @@ class PostProcess:
         plt.plot(r[::2] * 1E6, r[1::2] * 1E6, 'o', color='deepskyblue')
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
-        plt.colorbar()
-        plt.title(title)
 
         self.draw_resonator_pins(40, 0.72, 0.5, 0.5)
+
+        plt.colorbar()
+        plt.title(title)
 
         if self.save_path is not None and common is not None:
             common.save_figure(fig, save_path=self.save_path)
@@ -268,6 +269,7 @@ class TrapAreaSolver:
         self.screening_length = screening_length
         self.qe = 1.602E-19
         self.eps0 = 8.85E-12
+        self.kB = 1.38E-23
 
     def V(self, xi, yi):
         """
@@ -408,6 +410,50 @@ class TrapAreaSolver:
         gradient[1::2] = self.dVdy(xi, yi)
         gradient += self.grad_Vee(xi, yi) / self.qe
         return gradient
+
+    def thermal_kick_x(self, x, y, T):
+        ktrapx = np.abs(self.qe * self.ddVdx(x, y))
+        return np.sqrt(2 * self.kB * T / ktrapx)
+
+    def thermal_kick_y(self, x, y, T):
+        ktrapy = np.abs(self.qe * self.ddVdy(x, y))
+        return np.sqrt(2 * self.kB * T / ktrapy)
+
+    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **minimizer_options):
+        """
+        This function is to be run after a minimization by scipy.optimize.minimize has already occured.
+        It takes the output of that function in solution_data_reference and tries to find a lower energy state
+        by perturbing the system N_perturbation times at temperature T. See thermal_kick_x and thermal_kick_y.
+        :param cost_function: A function that takes the electron positions and returns the total energy
+        :param N_perturbations: Integer, number of perturbations to find a new minimum
+        :param T: Temperature to perturb the system at. This is used to convert to a motion.
+        :param solution_data_reference: output of scipy.optimize.minimize
+        :param minimizer_options: Dictionary with optimizer options. See scipy.optimize.minimize
+        :return: output of minimize with the lowest evaluated cost function
+        """
+
+        electron_initial_positions = solution_data_reference['x']
+        best_result = solution_data_reference
+
+        for n in range(N_perturbations):
+            xi, yi = r2xy(electron_initial_positions)
+            xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
+            yi_prime = yi + self.thermal_kick_y(xi, yi, T) * np.random.randn(len(yi))
+            electron_perturbed_positions = xy2r(xi_prime, yi_prime)
+
+            res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
+
+            if res['status'] == 0 and res['fun'] < best_result['fun']:
+                cprint("\tNew minimum was found after perturbing!", "green")
+                best_result = res
+            elif res['status'] == 0 and res['fun'] > best_result['fun']:
+                pass  # No new minimum was found after perturbation, this is quite common.
+            elif res['status'] != 0 and res['fun'] < best_result['fun']:
+                cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
+            elif res['status'] != 0 and res['fun'] > best_result['fun']:
+                cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
+
+        return best_result
 
 class ResonatorSolver:
 
@@ -853,7 +899,8 @@ def construct_symmetric_y(ymin, N):
     return np.linspace(ymin, -dy / 2., (np.abs(ymin) - 0.5 * dy) / dy + 1)
 
 
-def load_data(data_path, xeval=None, yeval=None, mirror_y=True, extend_resonator=True, do_plot=True):
+def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,
+              insert_resonator=False, inserted_res_length=40):
     """
     Takes in the following file names: "Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", "CenterGuard.dsp" and
     "TrapGuard.dsp" in path "data_path" and loads the data into a dictionary output.
@@ -931,6 +978,46 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, extend_resonator
                 # Also change all the other potential data
                 for i in range(res_left_idx, np.shape(Uinterp_symmetric)[1]):
                     Uinterp_symmetric[:, i] = Uinterp_symmetric[:, res_left_idx]
+
+        elif insert_resonator:
+            # Insertion is done at the minimum of the potential.
+            inserted_length = inserted_res_length
+            x_spacing = x_symmetric[0, 1] - x_symmetric[0, 0]
+            new_indices = np.int(inserted_length/x_spacing)
+            old_shape = np.shape(Uinterp_symmetric)
+            new_shape = (old_shape[0], old_shape[1] + new_indices)
+
+            #print("We start with a %d by %d array and extend it to a %d by %d array"%(old_shape[0], old_shape[1], new_shape[0], new_shape[1]))
+
+            Uinterp_symmetric_new = np.zeros(new_shape)
+
+            if name == "resonator":
+                res_left_idx = np.argmax(Uinterp_symmetric[common.find_nearest(y_symmetric[:, 0], 0), :])
+                res_left_x = x_symmetric[0, res_left_idx]
+                res_right_idx = res_left_idx + new_indices
+                res_right_x = res_left_x + new_indices * x_spacing
+
+                # Note: res_left_x and res_right_x are in units of um
+                print("Resonator data was inserted from x = %.2f um to x = %.2f um" % (res_left_x, res_right_x))
+
+            for i in range(res_left_idx, res_right_idx):
+                Uinterp_symmetric_new[:, i] = Uinterp_symmetric[:, res_left_idx]
+
+            Uinterp_symmetric_new[:, :res_left_idx] = Uinterp_symmetric[:, :res_left_idx]
+            Uinterp_symmetric_new[:, res_right_idx:] = Uinterp_symmetric[:, res_left_idx:]
+            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + new_indices * x_spacing, x_spacing)
+
+            if len(xs) != new_shape[1]:
+                print("xs shapes are not correct: %d vs. %d"%(len(xs), new_shape[1]))
+
+            ys = np.linspace(np.min(y_symmetric), np.max(y_symmetric), new_shape[0])
+
+            if len(ys) != new_shape[0]:
+                print("ys shapes are not correct: %d vs. %d" % (len(ys), new_shape[0]))
+
+            x_symmetric_new, y_symmetric_new = np.meshgrid(xs, ys)
+            x_symmetric, y_symmetric = x_symmetric_new, y_symmetric_new
+            Uinterp_symmetric = Uinterp_symmetric_new
 
         if do_plot:
             plt.figure(figsize=(8., 2.))
