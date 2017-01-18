@@ -132,6 +132,33 @@ class PostProcess:
         self.save_path = save_path
         self.trapped_electrons = None
 
+    def draw_resonator_pins(self, box_y_length, pin_width, center_gap, edge_gap):
+        pin1_x = [-(center_gap / 2. + pin_width), -center_gap / 2., -center_gap / 2., -(center_gap / 2. + pin_width),
+                  -(center_gap / 2. + pin_width)]
+        pin1_y = [-box_y_length / 2., -box_y_length / 2., box_y_length / 2., box_y_length / 2., -box_y_length / 2.]
+
+        pin2_x = [(center_gap / 2. + pin_width), center_gap / 2., center_gap / 2., (center_gap / 2. + pin_width),
+                  (center_gap / 2. + pin_width)]
+        pin2_y = [-box_y_length / 2., -box_y_length / 2., box_y_length / 2., box_y_length / 2., -box_y_length / 2.]
+
+        plt.plot(pin1_x, pin1_y, lw=0)
+        #plt.plot(pin2_x, pin2_y, **plot_kwargs)
+        #plt.plot([-(edge_gap + pin_width + center_gap / 2.), -(edge_gap + pin_width + center_gap / 2.)],
+        #         [-box_y_length / 2., box_y_length / 2.], **plot_kwargs)
+        #plt.plot([(edge_gap + pin_width + center_gap / 2.), (edge_gap + pin_width + center_gap / 2.)],
+        #         [-box_y_length / 2., box_y_length / 2.], **plot_kwargs)
+
+        plt.fill_between(pin1_x, pin1_y, y2=-box_y_length / 2.,
+                         color='none', hatch='X', edgecolor='k', alpha=0.5)
+        plt.fill_between(pin2_x, pin2_y, y2=-box_y_length / 2.,
+                         color='none', hatch='X', edgecolor='k', alpha=0.5)
+        plt.fill_between([-(edge_gap + pin_width + center_gap / 2. + 3.0), -(edge_gap + pin_width + center_gap / 2.)],
+                        [box_y_length / 2., box_y_length / 2.], y2=[-box_y_length / 2., -box_y_length/2.],
+                        color='none', hatch='X', edgecolor='k', alpha=0.5)
+        plt.fill_between([(edge_gap + pin_width + center_gap / 2.), (edge_gap + pin_width + center_gap / 2. + 3.0)],
+                        [box_y_length / 2., box_y_length / 2.], y2=[-box_y_length / 2., -box_y_length / 2.],
+                        color='none', hatch='X', edgecolor='k', alpha=0.5)
+
     def get_electron_density(self, r, verbose=True):
         """
         Calculate the electron density based on the nearest neighbor for each electron. The electron density is in m^-2
@@ -181,6 +208,8 @@ class PostProcess:
         plt.ylabel("$y$ ($\mu$m)")
         plt.colorbar()
         plt.title(title)
+
+        self.draw_resonator_pins(40, 0.72, 0.5, 0.5)
 
         if self.save_path is not None and common is not None:
             common.save_figure(fig, save_path=self.save_path)
