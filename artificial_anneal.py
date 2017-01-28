@@ -2,12 +2,17 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import approx_fprime, minimize
 from scipy.interpolate import RectBivariateSpline, UnivariateSpline
-import os, ezdxf
+import os
 from termcolor import cprint
 from Common import common
 from BEMHelper import interpolate_slow
 from .import_data import load_dsp
 import functools
+
+try:
+    import ezdxf
+except:
+    pass
 
 class ConvergenceMonitor:
     def __init__(self, Uopt, grad_Uopt, N, Uext=None, xext=None, yext=None, verbose=True, eps=1E-12, save_path=None,
