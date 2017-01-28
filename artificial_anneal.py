@@ -2,12 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import approx_fprime, minimize
 from scipy.interpolate import RectBivariateSpline, UnivariateSpline
-import os
+import os, time, functools, multiprocessing
 from termcolor import cprint
 from Common import common
 from BEMHelper import interpolate_slow
 from .import_data import load_dsp
-import functools
 
 try:
     import ezdxf
@@ -595,7 +594,65 @@ class ResonatorSolver:
         ktrapx = np.abs(qe * self.ddVdx(x, y))
         return np.sqrt(2 * kB * T / ktrapx)
 
-    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **kwargs):
+    def single_thread(self, iteration, electron_initial_positions, T, cost_function, minimizer_dict):
+        xi, yi = r2xy(electron_initial_positions)
+        np.random.seed(np.int(time.time()) + iteration)
+        xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
+        yi_prime = yi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(yi))
+        electron_perturbed_positions = xy2r(xi_prime, yi_prime)
+        return minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_dict)
+
+    def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict):
+        """
+        This function is to be run after a minimization by scipy.optimize.minimize has already occured.
+        It takes the output of that function in solution_data_reference and tries to find a lower energy state
+        by perturbing the system N_perturbation times at temperature T. See thermal_kick_x and thermal_kick_y.
+        This function runs N_perturbations in parallel on the cores of your CPU.
+        :param cost_function: A function that takes the electron positions and returns the total energy
+        :param N_perturbations: Integer, number of perturbations to find a new minimum
+        :param T: Temperature to perturb the system at. This is used to convert to a motion.
+        :param solution_data_reference: output of scipy.optimize.minimize
+        :param minimizer_dict: Dictionary with optimizer options. See scipy.optimize.minimize
+        :return: output of minimize with the lowest evaluated cost function
+        """
+        electron_initial_positions = solution_data_reference['x']
+        best_result = solution_data_reference
+        pool = multiprocessing.Pool()
+
+        tasks = []
+        iteration = 0
+        while iteration < N_perturbations:
+            iteration += 1
+            tasks.append((iteration, electron_initial_positions, T, cost_function, minimizer_dict,))
+
+        results = [pool.apply_async(self.single_thread, t) for t in tasks]
+        for result in results:
+            res = result.get()
+
+            if res['status'] == 0 and res['fun'] < best_result['fun']:
+                cprint("\tNew minimum was found after perturbing!", "green")
+                best_result = res
+            elif res['status'] == 0 and res['fun'] > best_result['fun']:
+                pass  # No new minimum was found after perturbation, this is quite common.
+            elif res['status'] != 0 and res['fun'] < best_result['fun']:
+                cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
+            elif res['status'] != 0 and res['fun'] > best_result['fun']:
+                cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
+
+        return best_result
+
+    def sequential_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_options):
+        """
+        This function is to be run after a minimization by scipy.optimize.minimize has already occured.
+        It takes the output of that function in solution_data_reference and tries to find a lower energy state
+        by perturbing the system N_perturbation times at temperature T. See thermal_kick_x and thermal_kick_y.
+        :param cost_function: A function that takes the electron positions and returns the total energy
+        :param N_perturbations: Integer, number of perturbations to find a new minimum
+        :param T: Temperature to perturb the system at. This is used to convert to a motion.
+        :param solution_data_reference: output of scipy.optimize.minimize
+        :param minimizer_options: Dictionary with optimizer options. See scipy.optimize.minimize
+        :return: output of minimize with the lowest evaluated cost function
+        """
 
         electron_initial_positions = solution_data_reference['x']
         best_result = solution_data_reference
@@ -606,7 +663,7 @@ class ResonatorSolver:
             yi_prime = yi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(yi))
             electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
-            res = minimize(cost_function, electron_perturbed_positions, method='CG', **kwargs)
+            res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
 
             if res['status'] == 0 and res['fun'] < best_result['fun']:
                 cprint("\tNew minimum was found after perturbing!", "green")
