@@ -128,15 +128,24 @@ class ConvergenceMonitor:
         os.chdir(curr_dir)
 
 class PostProcess:
-    def __init__(self, save_path=None):
+    def __init__(self, save_path=None, res_pinw=0.9, edge_gapw=0.5, center_gapw=0.7, box_length=40):
         """
         Post process the results after the optimizer has converged.
         :param save_path: Directory in which to save figures/movies.
         """
         self.save_path = save_path
         self.trapped_electrons = None
+        self.res_pinw = res_pinw
+        self.edge_gapw = edge_gapw
+        self.center_gapw = center_gapw
+        self.box_length = box_length
 
-    def draw_resonator_pins(self, box_y_length, pin_width, center_gap, edge_gap):
+    def draw_resonator_pins(self):
+        box_y_length = self.box_length
+        pin_width = self.res_pinw
+        edge_gap = self.edge_gapw
+        center_gap = self.center_gapw
+
         pin1_x = [-(center_gap / 2. + pin_width), -center_gap / 2., -center_gap / 2., -(center_gap / 2. + pin_width),
                   -(center_gap / 2. + pin_width)]
         pin1_y = [-box_y_length / 2., -box_y_length / 2., box_y_length / 2., box_y_length / 2., -box_y_length / 2.]
@@ -211,7 +220,7 @@ class PostProcess:
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
 
-        self.draw_resonator_pins(40, 0.72, 0.5, 0.5)
+        self.draw_resonator_pins()
 
         plt.colorbar()
         plt.title(title)
