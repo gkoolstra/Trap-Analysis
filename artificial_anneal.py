@@ -193,7 +193,8 @@ class PostProcess:
 
         return ns
 
-    def save_snapshot(self, r, xext=None, yext=None, Uext=None, figsize=(12.,3.), clim=(-1,0), common=None, title=""):
+    def save_snapshot(self, r, xext=None, yext=None, Uext=None, figsize=(12.,3.), clim=(-1,0), common=None, title="",
+                      draw_resonator_pins=True):
         """
         Save a picture with the electron positions on top of the electrostatic potential data.
         :param r: Electron x,y coordinate pairs
@@ -220,7 +221,8 @@ class PostProcess:
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
 
-        self.draw_resonator_pins()
+        if draw_resonator_pins:
+            self.draw_resonator_pins()
 
         plt.colorbar()
         plt.title(title)
@@ -431,6 +433,62 @@ class TrapAreaSolver:
     def thermal_kick_y(self, x, y, T):
         ktrapy = np.abs(self.qe * self.ddVdy(x, y))
         return np.sqrt(2 * self.kB * T / ktrapy)
+
+    def single_thread(self, iteration, electron_initial_positions, T, cost_function, minimizer_dict):
+        xi, yi = r2xy(electron_initial_positions)
+        np.random.seed(np.int(time.time()) + iteration)
+        xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
+        yi_prime = yi + self.thermal_kick_y(xi, yi, T) * np.random.randn(len(yi))
+        electron_perturbed_positions = xy2r(xi_prime, yi_prime)
+        return minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_dict)
+
+    def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict):
+        """
+        This function is to be run after a minimization by scipy.optimize.minimize has already occured.
+        It takes the output of that function in solution_data_reference and tries to find a lower energy state
+        by perturbing the system N_perturbation times at temperature T. See thermal_kick_x and thermal_kick_y.
+        This function runs N_perturbations in parallel on the cores of your CPU.
+        :param cost_function: A function that takes the electron positions and returns the total energy
+        :param N_perturbations: Integer, number of perturbations to find a new minimum
+        :param T: Temperature to perturb the system at. This is used to convert to a motion.
+        :param solution_data_reference: output of scipy.optimize.minimize
+        :param minimizer_dict: Dictionary with optimizer options. See scipy.optimize.minimize
+        :return: output of minimize with the lowest evaluated cost function
+        """
+        electron_initial_positions = solution_data_reference['x']
+        best_result = solution_data_reference
+        pool = multiprocessing.Pool()
+
+        tasks = []
+        iteration = 0
+        while iteration < N_perturbations:
+            iteration += 1
+            tasks.append((iteration, electron_initial_positions, T, cost_function, minimizer_dict,))
+
+        results = [pool.apply_async(self.single_thread, t) for t in tasks]
+        for result in results:
+            res = result.get()
+
+            if res['status'] == 0 and res['fun'] < best_result['fun']:
+                #cprint("\tNew minimum was found after perturbing!", "green")
+                best_result = res
+            # elif res['status'] == 0 and res['fun'] > best_result['fun']:
+            #     pass  # No new minimum was found after perturbation, this is quite common.
+            # elif res['status'] != 0 and res['fun'] < best_result['fun']:
+            #     cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
+            # elif res['status'] != 0 and res['fun'] > best_result['fun']:
+            #     cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
+
+        # Nothing has changed by perturbing the reference solution
+        if (best_result['x'] == solution_data_reference['x']).all():
+            cprint("Solution data unchanged after perturbing", "white")
+        # Or there is a new minimum
+        else:
+            cprint("Better solution found (%.3f%% difference)" \
+                   % (100 * (best_result['fun'] - solution_data_reference['fun']) / solution_data_reference['fun']), "green")
+
+
+        return best_result
 
     def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **minimizer_options):
         """
@@ -983,14 +1041,12 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
     :param do_plot: Plot the data on the grid made up by xeval and yeval
     :return: x, y, output = [{'name' : ..., 'V' : ..., 'x' : ..., 'y' : ...}, ...]
     """
-    datafiles = ["Resonator.dsp",
-                 "Trap.dsp",
-                 "ResonatorGuard.dsp",
-                 "CenterGuard.dsp",
+    datafiles = ["Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", #"CenterGuard.dsp",
                  "TrapGuard.dsp"]
 
     output = list()
-    names = ['resonator', 'trap', 'resonatorguard', 'centerguard', 'trapguard']
+    names = ['resonator', 'trap', 'resonatorguard', #'centerguard',
+             'trapguard']
     idx = 1
 
     # Iterate over the data files
@@ -1076,7 +1132,7 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
 
             Uinterp_symmetric_new[:, :res_left_idx] = Uinterp_symmetric[:, :res_left_idx]
             Uinterp_symmetric_new[:, res_right_idx:] = Uinterp_symmetric[:, res_left_idx:]
-            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + new_indices * x_spacing, x_spacing)
+            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + (new_indices+1) * x_spacing, x_spacing)
 
             if len(xs) != new_shape[1]:
                 print("xs shapes are not correct: %d vs. %d"%(len(xs), new_shape[1]))
