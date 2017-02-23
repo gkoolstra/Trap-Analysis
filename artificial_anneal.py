@@ -502,7 +502,6 @@ class TrapAreaSolver:
         :param minimizer_options: Dictionary with optimizer options. See scipy.optimize.minimize
         :return: output of minimize with the lowest evaluated cost function
         """
-
         electron_initial_positions = solution_data_reference['x']
         best_result = solution_data_reference
 
@@ -522,7 +521,8 @@ class TrapAreaSolver:
             elif res['status'] != 0 and res['fun'] < best_result['fun']:
                 cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
             elif res['status'] != 0 and res['fun'] > best_result['fun']:
-                cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
+                pass
+                #cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
 
         return best_result
 
@@ -1029,7 +1029,7 @@ def construct_symmetric_y(ymin, N):
 
 
 def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,
-              insert_resonator=False, inserted_res_length=40):
+              insert_resonator=False, inserted_res_length=40, smoothen_xy=None):
     """
     Takes in the following file names: "Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", "CenterGuard.dsp" and
     "TrapGuard.dsp" in path "data_path" and loads the data into a dictionary output.
@@ -1039,6 +1039,10 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
     :param mirror_y: bool, mirror the potential data around the y-axis. To use this make sure yeval is symmetric around 0
     :param extend_resonator: bool, extend potential data to the right of the minimum of the resonator potential data
     :param do_plot: Plot the data on the grid made up by xeval and yeval
+    :param insert_resonator:
+    :param inserted_res_length:
+    :param smoothen_xy: Smooth the raw data according to a window in the x and y direction window = (x,y).
+    The program will calculate the window size for the moving average filter in each direction according to (x, y).
     :return: x, y, output = [{'name' : ..., 'V' : ..., 'x' : ..., 'y' : ...}, ...]
     """
     datafiles = ["Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", #"CenterGuard.dsp",
@@ -1067,6 +1071,19 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
                                                                       clim=(0.0, 1.0), plot_axes='xy',
                                                                       cmap=plt.cm.Spectral_r, plot_mesh=False,
                                                                       plot_data=False)
+
+        if smoothen_xy is not None:
+            dx = np.diff(xeval)[0] * 1E-6
+            dy = np.diff(yeval)[0] * 1E-6
+            Nrows = np.int(smoothen_xy[0]/dx)
+            Ncols = np.int(smoothen_xy[1]/dy)
+
+            if Nrows > 1 or Ncols > 1:
+                Uinterp = common.moving_average_2d(Uinterp, (Nrows, Ncols))
+            elif Nrows <= 1:
+                print("Smoothing has no effect in y-direction, please increase sampling in y direction.")
+            elif Ncols <= 1:
+                print("Smoothing has no effect in x-direction, please increase sampling in x direction.")
 
         if mirror_y:
             # Mirror around the y-axis
