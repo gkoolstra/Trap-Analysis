@@ -426,13 +426,23 @@ class TrapAreaSolver:
         gradient += self.grad_Vee(xi, yi) / self.qe
         return gradient
 
-    def thermal_kick_x(self, x, y, T):
+    def thermal_kick_x(self, x, y, T, maximum_dx=None):
         ktrapx = np.abs(self.qe * self.ddVdx(x, y))
-        return np.sqrt(2 * self.kB * T / ktrapx)
+        ret = np.sqrt(2 * self.kB * T / ktrapx)
+        if maximum_dx is not None:
+            ret[ret > maximum_dx] = maximum_dx
+            return ret
+        else:
+            return ret
 
-    def thermal_kick_y(self, x, y, T):
+    def thermal_kick_y(self, x, y, T, maximum_dy=None):
         ktrapy = np.abs(self.qe * self.ddVdy(x, y))
-        return np.sqrt(2 * self.kB * T / ktrapy)
+        ret = np.sqrt(2 * self.kB * T / ktrapy)
+        if maximum_dy is not None:
+            ret[ret > maximum_dy] = maximum_dy
+            return ret
+        else:
+            return ret
 
     def single_thread(self, iteration, electron_initial_positions, T, cost_function, minimizer_dict):
         xi, yi = r2xy(electron_initial_positions)
@@ -490,7 +500,8 @@ class TrapAreaSolver:
 
         return best_result
 
-    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, **minimizer_options):
+    def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference,
+                          maximum_dx=None, maximum_dy=None, **minimizer_options):
         """
         This function is to be run after a minimization by scipy.optimize.minimize has already occured.
         It takes the output of that function in solution_data_reference and tries to find a lower energy state
@@ -507,8 +518,8 @@ class TrapAreaSolver:
 
         for n in range(N_perturbations):
             xi, yi = r2xy(electron_initial_positions)
-            xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
-            yi_prime = yi + self.thermal_kick_y(xi, yi, T) * np.random.randn(len(yi))
+            xi_prime = xi + self.thermal_kick_x(xi, yi, T, maximum_dx=maximum_dx) * np.random.randn(len(xi))
+            yi_prime = yi + self.thermal_kick_y(xi, yi, T, maximum_dy=maximum_dy) * np.random.randn(len(yi))
             electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
             res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
