@@ -140,6 +140,28 @@ class PostProcess:
         self.center_gapw = center_gapw
         self.box_length = box_length
 
+    def draw_from_dxf(self, filename, **plot_options):
+        dwg = ezdxf.readfile(filename)
+        modelspace = dwg.modelspace()
+
+        k = 0
+        pts = dict()
+
+        while True:
+            xpts, ypts = list(), list()
+            try:
+                line = modelspace.query('LWPOLYLINE')[k]
+                for l in range(len(line)):
+                    xpts.append(line[l][0])
+                    ypts.append(line[l][1])
+                pts['%d' % k] = np.vstack((xpts, ypts))
+                k += 1
+            except:
+                break
+
+        for p in pts.keys():
+            plt.plot(pts[p][0][:], pts[p][1][:], **plot_options)
+
     def draw_resonator_pins(self):
         box_y_length = self.box_length
         pin_width = self.res_pinw
@@ -194,7 +216,7 @@ class PostProcess:
         return ns
 
     def save_snapshot(self, r, xext=None, yext=None, Uext=None, figsize=(12.,3.), clim=(-1,0), common=None, title="",
-                      draw_resonator_pins=True):
+                      draw_resonator_pins=True, draw_from_dxf={'filename' : None, 'plot_options' : {'color' : 'black'}}):
         """
         Save a picture with the electron positions on top of the electrostatic potential data.
         :param r: Electron x,y coordinate pairs
@@ -217,12 +239,14 @@ class PostProcess:
             plt.xlim(np.min(xext) * 1E6, np.max(xext) * 1E6)
             plt.ylim(np.min(yext) * 1E6, np.max(yext) * 1E6)
 
+        if draw_resonator_pins:
+            self.draw_resonator_pins()
+        if draw_from_dxf['filename'] is not None:
+            self.draw_from_dxf(draw_from_dxf['filename'], **draw_from_dxf['plot_options'])
+
         plt.plot(r[::2] * 1E6, r[1::2] * 1E6, 'o', color='deepskyblue')
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
-
-        if draw_resonator_pins:
-            self.draw_resonator_pins()
 
         plt.colorbar()
         plt.title(title)
@@ -417,7 +441,7 @@ class TrapAreaSolver:
         """
         Total derivative of the cost function. This may be used in the optimizer to converge faster.
         :param r: r = np.array([x0, y0, x1, y1, x2, y2, ... , xN, yN])
-        :return: 1D array of length len(r)
+        :return: 1D array of length len(r), where grad_total = np.array([dV/dx|r0, dV/dy|r0, ...])
         """
         xi, yi = r[::2], r[1::2]
         gradient = np.zeros(len(r))
@@ -444,15 +468,16 @@ class TrapAreaSolver:
         else:
             return ret
 
-    def single_thread(self, iteration, electron_initial_positions, T, cost_function, minimizer_dict):
+    def single_thread(self, iteration, electron_initial_positions, T, cost_function, minimizer_dict, maximum_dx, maximum_dy):
         xi, yi = r2xy(electron_initial_positions)
         np.random.seed(np.int(time.time()) + iteration)
-        xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
-        yi_prime = yi + self.thermal_kick_y(xi, yi, T) * np.random.randn(len(yi))
+        xi_prime = xi + self.thermal_kick_x(xi, yi, T, maximum_dx=maximum_dx) * np.random.randn(len(xi))
+        yi_prime = yi + self.thermal_kick_y(xi, yi, T, maximum_dy=maximum_dy) * np.random.randn(len(yi))
         electron_perturbed_positions = xy2r(xi_prime, yi_prime)
         return minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_dict)
 
-    def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict):
+    def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict,
+                                   maximum_dx=None, maximum_dy=None):
         """
         This function is to be run after a minimization by scipy.optimize.minimize has already occured.
         It takes the output of that function in solution_data_reference and tries to find a lower energy state
@@ -473,7 +498,7 @@ class TrapAreaSolver:
         iteration = 0
         while iteration < N_perturbations:
             iteration += 1
-            tasks.append((iteration, electron_initial_positions, T, cost_function, minimizer_dict,))
+            tasks.append((iteration, electron_initial_positions, T, cost_function, minimizer_dict, maximum_dx, maximum_dy,))
 
         results = [pool.apply_async(self.single_thread, t) for t in tasks]
         for result in results:
@@ -482,12 +507,6 @@ class TrapAreaSolver:
             if res['status'] == 0 and res['fun'] < best_result['fun']:
                 #cprint("\tNew minimum was found after perturbing!", "green")
                 best_result = res
-            # elif res['status'] == 0 and res['fun'] > best_result['fun']:
-            #     pass  # No new minimum was found after perturbation, this is quite common.
-            # elif res['status'] != 0 and res['fun'] < best_result['fun']:
-            #     cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
-            # elif res['status'] != 0 and res['fun'] > best_result['fun']:
-            #     cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
 
         # Nothing has changed by perturbing the reference solution
         if (best_result['x'] == solution_data_reference['x']).all():
@@ -495,7 +514,8 @@ class TrapAreaSolver:
         # Or there is a new minimum
         else:
             cprint("Better solution found (%.3f%% difference)" \
-                   % (100 * (best_result['fun'] - solution_data_reference['fun']) / solution_data_reference['fun']), "green")
+                   % (100 * (best_result['fun'] - solution_data_reference['fun']) / solution_data_reference['fun']),
+                   "green")
 
 
         return best_result
