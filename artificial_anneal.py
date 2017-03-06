@@ -45,6 +45,7 @@ class ConvergenceMonitor:
         self.xext, self.yext, self.Uext = xext, yext, Uext
         self.figsize = figsize
         self.coordinate_transformation = coordinate_transformation
+        self.electrode_outline_filename = None
 
     def monitor_convergence(self, xk):
         """
@@ -102,6 +103,10 @@ class ConvergenceMonitor:
         plt.xlabel("$x$ ($\mu$m)")
         plt.ylabel("$y$ ($\mu$m)")
         plt.colorbar()
+
+        if self.electrode_outline_filename is not None:
+            PP = PostProcess(save_path=self.save_path)
+            PP.draw_from_dxf(filename=self.electrode_outline_filename, color='black', alpha=0.6, lw=0.5)
 
         if self.save_path is not None:
             common.save_figure(fig, save_path=self.save_path)
