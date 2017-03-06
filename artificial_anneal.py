@@ -15,7 +15,7 @@ except:
 
 class ConvergenceMonitor:
     def __init__(self, Uopt, grad_Uopt, N, Uext=None, xext=None, yext=None, verbose=True, eps=1E-12, save_path=None,
-                 figsize=(12.,3.), coordinate_transformation=None):
+                 figsize=(6.5,3.), coordinate_transformation=None):
         """
         To be used with scipy.optimize.minimize as a call back function. One has two choices for call-back functions:
         - monitor_convergence: print the status of convergence (value of Uopt and norm of grad_Uopt)
@@ -104,11 +104,12 @@ class ConvergenceMonitor:
         plt.colorbar()
 
         if self.save_path is not None:
-            fig.savefig(os.path.join(self.save_path, '%.5d.png' % (self.call_counter)), bbox_inches='tight', dpi=300)
+            common.save_figure(fig, save_path=self.save_path)
+            #fig.savefig(os.path.join(self.save_path, '%.5d.png' % (self.call_counter)), bbox_inches='tight', dpi=300)
         else:
             print("Please specify a save path when initiating ConvergenceMonitor")
 
-        plt.close('all')
+        plt.close(fig)
 
         self.monitor_convergence(xk)
 
