@@ -2,16 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import approx_fprime, minimize
 from scipy.interpolate import RectBivariateSpline, UnivariateSpline
-import os, time, functools, multiprocessing
+import os, time, functools, multiprocessing, dxfgrabber
 from termcolor import cprint
 from Common import common
 from BEMHelper import interpolate_slow
 from .import_data import load_dsp
-
-try:
-    import ezdxf
-except:
-    pass
 
 class ConvergenceMonitor:
     def __init__(self, Uopt, grad_Uopt, N, Uext=None, xext=None, yext=None, verbose=True, eps=1E-12, save_path=None,
@@ -147,26 +142,7 @@ class PostProcess:
         self.box_length = box_length
 
     def draw_from_dxf(self, filename, **plot_options):
-        dwg = ezdxf.readfile(filename)
-        modelspace = dwg.modelspace()
-
-        k = 0
-        pts = dict()
-
-        while True:
-            xpts, ypts = list(), list()
-            try:
-                line = modelspace.query('LWPOLYLINE')[k]
-                for l in range(len(line)):
-                    xpts.append(line[l][0])
-                    ypts.append(line[l][1])
-                pts['%d' % k] = np.vstack((xpts, ypts))
-                k += 1
-            except:
-                break
-
-        for p in pts.keys():
-            plt.plot(pts[p][0][:], pts[p][1][:], **plot_options)
+        draw_from_dxf(filename, **plot_options)
 
     def draw_resonator_pins(self):
         box_y_length = self.box_length
@@ -480,7 +456,7 @@ class TrapAreaSolver:
         xi_prime = xi + self.thermal_kick_x(xi, yi, T, maximum_dx=maximum_dx) * np.random.randn(len(xi))
         yi_prime = yi + self.thermal_kick_y(xi, yi, T, maximum_dy=maximum_dy) * np.random.randn(len(yi))
         electron_perturbed_positions = xy2r(xi_prime, yi_prime)
-        return minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_dict)
+        return minimize(cost_function, electron_perturbed_positions, **minimizer_dict)
 
     def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict,
                                    maximum_dx=None, maximum_dy=None):
@@ -548,7 +524,7 @@ class TrapAreaSolver:
             yi_prime = yi + self.thermal_kick_y(xi, yi, T, maximum_dy=maximum_dy) * np.random.randn(len(yi))
             electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
-            res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
+            res = minimize(cost_function, electron_perturbed_positions, **minimizer_options)
 
             if res['status'] == 0 and res['fun'] < best_result['fun']:
                 cprint("\tNew minimum was found after perturbing!", "green")
@@ -1218,6 +1194,22 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
         idx += 1
 
     return x_symmetric*1E-6, y_symmetric*1E-6, output
+
+def draw_from_dxf(filename, **plot_options):
+    """
+    Draws polylines from a dxf file into a graph
+    :param filename: dxf file name.
+    :param plot_options: dictionary of plot attributes, e.g. {'color':'k'}
+    :return: Nones
+    """
+    dxf = dxfgrabber.readfile(filename)
+    output = [entity for entity in dxf.entities]
+    for o in output:
+        if o.dxftype == "LWPOLYLINE":
+            r = np.array(o.points)
+            x = r[:,0]
+            y = r[:,1]
+            plt.plot(x, y, **plot_options)
 
 def factors(n):
     """
