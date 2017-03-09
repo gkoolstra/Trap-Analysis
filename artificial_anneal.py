@@ -10,7 +10,7 @@ from .import_data import load_dsp
 
 class ConvergenceMonitor:
     def __init__(self, Uopt, grad_Uopt, N, Uext=None, xext=None, yext=None, verbose=True, eps=1E-12, save_path=None,
-                 figsize=(6.5,3.), coordinate_transformation=None):
+                 figsize=(6.5,3.), coordinate_transformation=None, clim=(-0.75, 0)):
         """
         To be used with scipy.optimize.minimize as a call back function. One has two choices for call-back functions:
         - monitor_convergence: print the status of convergence (value of Uopt and norm of grad_Uopt)
@@ -27,6 +27,7 @@ class ConvergenceMonitor:
         :param eps: Step size used to numerically approximate the gradient with scipy.optimize.approx_fprime
         :param save_path: Directory in which to save figures when self.save_pictures is called. None by default.
         """
+        self.clim = clim
         self.call_every = N
         self.call_counter = 0
         self.verbose = verbose
@@ -84,7 +85,7 @@ class ConvergenceMonitor:
 
         if (Uext is not None) and (xext is not None) and (yext is not None):
             Xext, Yext = np.meshgrid(xext, yext)
-            plt.pcolormesh(xext * 1E6, yext * 1E6, Uext(Xext, Yext), cmap=plt.cm.Spectral_r, vmax=0.0)
+            plt.pcolormesh(xext * 1E6, yext * 1E6, Uext(Xext, Yext), cmap=plt.cm.Spectral_r, vmax=self.clim[1], vmin=self.clim[0])
             plt.xlim(np.min(xext) * 1E6, np.max(xext) * 1E6)
             plt.ylim(np.min(yext) * 1E6, np.max(yext) * 1E6)
 
