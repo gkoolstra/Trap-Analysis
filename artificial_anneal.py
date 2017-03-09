@@ -52,15 +52,18 @@ class ConvergenceMonitor:
         if not (self.call_counter % self.call_every):
             self.iter.append(self.call_counter)
             self.curr_fun.append(self.Uopt(xk))
+
             # Here we use the L-inf norm (the maximum)
             self.curr_grad_norm.append(np.max(np.abs(self.grad_Uopt(xk))))
 
             if self.call_counter == 0:
+                self.curr_xk = xk
                 self.jac = self.grad_Uopt(xk)
-                self.approx_fprime = approx_fprime(xk, self.Uopt, self.epsilon)
+                #self.approx_fprime = approx_fprime(xk, self.Uopt, self.epsilon)
             else:
+                self.curr_xk = np.vstack((self.curr_xk, xk))
                 self.jac = np.vstack((self.jac, self.grad_Uopt(xk)))
-                self.approx_fprime = np.vstack((self.approx_fprime, approx_fprime(xk, self.Uopt, self.epsilon)))
+                #self.approx_fprime = np.vstack((self.approx_fprime, approx_fprime(xk, self.Uopt, self.epsilon)))
 
             if self.verbose:
                 print("%d\tUopt: %.8f eV\tNorm of gradient: %.2e eV/m" \
