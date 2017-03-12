@@ -88,7 +88,7 @@ class ConvergenceMonitor:
 
         if (Uext is not None) and (xext is not None) and (yext is not None):
             Xext, Yext = np.meshgrid(xext, yext)
-            plt.pcolormesh(xext * 1E6, yext * 1E6, Uext(Xext, Yext), cmap=plt.cm.Spectral_r, vmax=self.clim[1], vmin=self.clim[0])
+            plt.pcolormesh(xext * 1E6, yext * 1E6, Uext(Xext, Yext), cmap=plt.cm.RdYlBu, vmax=self.clim[1], vmin=self.clim[0])
             plt.xlim(np.min(xext) * 1E6, np.max(xext) * 1E6)
             plt.ylim(np.min(yext) * 1E6, np.max(yext) * 1E6)
 
@@ -1166,7 +1166,7 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
 
             Uinterp_symmetric_new[:, :res_left_idx] = Uinterp_symmetric[:, :res_left_idx]
             Uinterp_symmetric_new[:, res_right_idx:] = Uinterp_symmetric[:, res_left_idx:]
-            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + (new_indices+1) * x_spacing, x_spacing)
+            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + (new_indices) * x_spacing, x_spacing)
 
             if len(xs) != new_shape[1]:
                 print("xs shapes are not correct: %d vs. %d"%(len(xs), new_shape[1]))
