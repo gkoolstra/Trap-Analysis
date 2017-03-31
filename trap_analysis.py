@@ -333,13 +333,12 @@ class TrapSolver:
 
         return f_minimum, sigmas_minimum, f_center, sigmas_center
 
-    def get_eigenfreqencies(self, alpha, beta, f0, P, Q):
+    def get_eigenfreqencies(self, alpha, beta, f0):
         """
         Returns eigenfrequencies of the system of equations for a **single** electron - cavity system
         :param alpha: Quadratic component of the DC trapping potential in V/um**2
         :param beta: Linear component of the resonator differential mode potential in V/um.
         :param f0: Bare cavity frequency, without electrons, in Hz
-        :param P: Power of the input drive in dBm
         :param Q: Q of the microwave cavity
         :return: 2 eigenvalues, one of which is the cavity frequency and one the electron frequency in Hz.
         """
@@ -349,9 +348,9 @@ class TrapSolver:
         L = Z/omega0
 
         N = common.get_noof_photons_in_cavity(P, omega0/(2*np.pi), Q)
-        voltage_scaling = np.sqrt(N) * np.sqrt(1.055E-34 * omega0**2 * Z/2.)
+        #voltage_scaling = np.sqrt(N) * np.sqrt(1.055E-34 * omega0**2 * Z/2.)
         a1 = alpha * 1E12 # Quadratic component of the DC potential in V/m**2
-        beta = voltage_scaling * beta * 1E6 # Linear component of the RF potential in V/m
+        beta = beta * 1E6 #voltage_scaling * beta * 1E6 # Linear component of the RF potential in V/m
 
         Mat = np.array([[omega0**2, c['e'] * omega0**2 * beta],
                         [c['e'] * omega0**2 * L * beta/c['m_e'], 2 * c['e'] * a1/c['m_e']]])
