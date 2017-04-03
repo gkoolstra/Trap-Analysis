@@ -145,8 +145,8 @@ class PostProcess:
         self.center_gapw = center_gapw
         self.box_length = box_length
 
-    def draw_from_dxf(self, filename, **plot_options):
-        draw_from_dxf(filename, **plot_options)
+    def draw_from_dxf(self, filename, offset, **plot_options):
+        draw_from_dxf(filename, offset=offset, **plot_options)
 
     def draw_resonator_pins(self):
         box_y_length = self.box_length
@@ -228,7 +228,8 @@ class PostProcess:
         if draw_resonator_pins:
             self.draw_resonator_pins()
         if draw_from_dxf['filename'] is not None:
-            self.draw_from_dxf(draw_from_dxf['filename'], **draw_from_dxf['plot_options'])
+            self.draw_from_dxf(draw_from_dxf['filename'], draw_from_dxf['offset'],
+                               **draw_from_dxf['plot_options'])
 
         plt.plot(r[::2] * 1E6, r[1::2] * 1E6, 'o', color='deepskyblue')
         plt.xlabel("$x$ ($\mu$m)")
@@ -1046,7 +1047,7 @@ def construct_symmetric_y(ymin, N):
 
 
 def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,
-              insert_resonator=False, inserted_res_length=40, smoothen_xy=None):
+              inserted_trap_length=0, inserted_res_length=40, smoothen_xy=None):
     """
     Takes in the following file names: "Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", "CenterGuard.dsp" and
     "TrapGuard.dsp" in path "data_path" and loads the data into a dictionary output.
@@ -1056,7 +1057,7 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
     :param mirror_y: bool, mirror the potential data around the y-axis. To use this make sure yeval is symmetric around 0
     :param extend_resonator: bool, extend potential data to the right of the minimum of the resonator potential data
     :param do_plot: Plot the data on the grid made up by xeval and yeval
-    :param insert_resonator:
+    :param inserted_trap_length:
     :param inserted_res_length:
     :param smoothen_xy: Smooth the raw data according to a window in the x and y direction window = (x,y).
     The program will calculate the window size for the moving average filter in each direction according to (x, y).
@@ -1069,6 +1070,13 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
     names = ['resonator', 'trap', 'resonatorguard', #'centerguard',
              'trapguard']
     idx = 1
+
+    insert_resonator = True if inserted_res_length > 0 else False
+    insert_trap = True if inserted_trap_length > 0 else False
+    if insert_trap:
+        names = ['trap', 'resonator', 'resonatorguard', 'trapguard']
+        datafiles = ["Trap.dsp", "Resonator.dsp", "ResonatorGuard.dsp", "TrapGuard.dsp"]
+
 
     # Iterate over the data files
     for name, datafile in zip(names, datafiles):
@@ -1180,6 +1188,47 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
             x_symmetric, y_symmetric = x_symmetric_new, y_symmetric_new
             Uinterp_symmetric = Uinterp_symmetric_new
 
+        elif insert_trap:
+            # Insertion is done at the minimum of the potential.
+            inserted_length = inserted_trap_length
+            x_spacing = x_symmetric[0, 1] - x_symmetric[0, 0]
+            new_indices = np.int(inserted_length / x_spacing)
+            old_shape = np.shape(Uinterp_symmetric)
+            new_shape = (old_shape[0], old_shape[1] + new_indices)
+
+            # print("We start with a %d by %d array and extend it to a %d by %d array"%(old_shape[0], old_shape[1],
+            # new_shape[0], new_shape[1]))
+
+            Uinterp_symmetric_new = np.zeros(new_shape)
+
+            if name == "trap":
+                trap_left_idx = np.argmax(Uinterp_symmetric[common.find_nearest(y_symmetric[:, 0], 0), :])
+                trap_left_x = x_symmetric[0, trap_left_idx]
+                trap_right_idx = trap_left_idx + new_indices
+                trap_right_x = trap_left_x + new_indices * x_spacing
+
+                # Note: res_left_x and res_right_x are in units of um
+                print("Trap data was inserted from x = %.2f um to x = %.2f um" % (trap_left_x, trap_right_x))
+
+            for i in range(trap_left_idx, trap_right_idx):
+                Uinterp_symmetric_new[:, i] = Uinterp_symmetric[:, trap_left_idx]
+
+            Uinterp_symmetric_new[:, :trap_left_idx] = Uinterp_symmetric[:, :trap_left_idx]
+            Uinterp_symmetric_new[:, trap_right_idx:] = Uinterp_symmetric[:, trap_left_idx:]
+            xs = np.arange(np.min(x_symmetric), np.max(x_symmetric) + (new_indices) * x_spacing, x_spacing)
+
+            if len(xs) != new_shape[1]:
+                print("xs shapes are not correct: %d vs. %d" % (len(xs), new_shape[1]))
+
+            ys = np.linspace(np.min(y_symmetric), np.max(y_symmetric), new_shape[0])
+
+            if len(ys) != new_shape[0]:
+                print("ys shapes are not correct: %d vs. %d" % (len(ys), new_shape[0]))
+
+            x_symmetric_new, y_symmetric_new = np.meshgrid(xs, ys)
+            x_symmetric, y_symmetric = x_symmetric_new, y_symmetric_new
+            Uinterp_symmetric = Uinterp_symmetric_new
+
         if do_plot:
             plt.figure(figsize=(8., 2.))
             common.configure_axes(12)
@@ -1197,9 +1246,12 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
 
         idx += 1
 
+    if insert_trap:
+        output[0], output[1] = output[1], output[0]
+
     return x_symmetric*1E-6, y_symmetric*1E-6, output
 
-def draw_from_dxf(filename, **plot_options):
+def draw_from_dxf(filename, offset=(0E-6, 0E-6), **plot_options):
     """
     Draws polylines from a dxf file into a graph
     :param filename: dxf file name.
@@ -1211,8 +1263,8 @@ def draw_from_dxf(filename, **plot_options):
     for o in output:
         if o.dxftype == "LWPOLYLINE":
             r = np.array(o.points)
-            x = r[:,0]
-            y = r[:,1]
+            x = r[:,0] + offset[0]
+            y = r[:,1] + offset[1]
             plt.plot(x, y, **plot_options)
 
 def factors(n):
