@@ -544,6 +544,18 @@ class TrapAreaSolver:
 
         return best_result
 
+    def calculate_mu(self, ri):
+        electrons_x, electrons_y = r2xy(ri)
+        interactions = self.Vee(electrons_x, electrons_y) / self.qe
+        np.fill_diagonal(interactions, 0)
+        mu = list()
+        el = 0
+        for electron_x, electron_y in zip(electrons_x, electrons_y):
+            mu.append(np.sum(interactions[el, :]) + self.Velectrostatic(electron_x, electron_y) / 1.602E-19)
+            el += 1
+
+        return np.array(mu)
+
 class ResonatorSolver:
 
     def __init__(self, grid_data, potential_data, efield_data=None, box_length=40E-6, spline_order_x=3, smoothing=0,
