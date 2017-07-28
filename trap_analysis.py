@@ -21,7 +21,7 @@ except:
     print("Could not import kfit and common. Please do so manually.")
 
 try:
-    from BEM import interpolate_slow
+    from BEMHelper import interpolate_slow
 except:
     print("Could not import BEM module. Please do so manually.")
 
