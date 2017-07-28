@@ -4,7 +4,7 @@ from . import trap_analysis
 import sympy
 from tqdm import tqdm
 from sympy.utilities.lambdify import lambdify, implemented_function
-from sympy import mpmath
+import mpmath
 from scipy.interpolate import interp1d
 
 try:
