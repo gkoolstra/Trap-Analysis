@@ -540,7 +540,6 @@ class TrapAreaSolver:
                 cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
             elif res['status'] != 0 and res['fun'] > best_result['fun']:
                 pass
-                #cprint("\tMinimizer didn't converge, but this is not the lowest energy state!", "magenta")
 
         return best_result
 
@@ -697,7 +696,7 @@ class ResonatorSolver:
         xi_prime = xi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(xi))
         yi_prime = yi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(yi))
         electron_perturbed_positions = xy2r(xi_prime, yi_prime)
-        return minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_dict)
+        return minimize(cost_function, electron_perturbed_positions, **minimizer_dict)
 
     def parallel_perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference, minimizer_dict):
         """
@@ -760,7 +759,7 @@ class ResonatorSolver:
             yi_prime = yi + self.thermal_kick_x(xi, yi, T) * np.random.randn(len(yi))
             electron_perturbed_positions = xy2r(xi_prime, yi_prime)
 
-            res = minimize(cost_function, electron_perturbed_positions, method='CG', **minimizer_options)
+            res = minimize(cost_function, electron_perturbed_positions, **minimizer_options)
 
             if res['status'] == 0 and res['fun'] < best_result['fun']:
                 cprint("\tNew minimum was found after perturbing!", "green")
@@ -1058,7 +1057,7 @@ def construct_symmetric_y(ymin, N):
     return np.linspace(ymin, -dy / 2., (np.abs(ymin) - 0.5 * dy) / dy + 1)
 
 
-def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,
+def load_data(data_path, datafiles=None, names=None, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,
               inserted_trap_length=0, inserted_res_length=40, smoothen_xy=None):
     """
     Takes in the following file names: "Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", "CenterGuard.dsp" and
@@ -1075,12 +1074,14 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
     The program will calculate the window size for the moving average filter in each direction according to (x, y).
     :return: x, y, output = [{'name' : ..., 'V' : ..., 'x' : ..., 'y' : ...}, ...]
     """
-    datafiles = ["Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", #"CenterGuard.dsp",
-                 "TrapGuard.dsp"]
+    if datafiles is None:
+        datafiles = ["Resonator.dsp", "Trap.dsp", "ResonatorGuard.dsp", #"CenterGuard.dsp",
+                     "TrapGuard.dsp"]
 
     output = list()
-    names = ['resonator', 'trap', 'resonatorguard', #'centerguard',
-             'trapguard']
+    if names is None:
+        names = ['resonator', 'trap', 'resonatorguard', #'centerguard',
+                 'trapguard']
     idx = 1
 
     insert_resonator = True if inserted_res_length > 0 else False
@@ -1100,9 +1101,9 @@ def load_data(data_path, xeval=None, yeval=None, mirror_y=True, do_plot=True, ex
         ydata -= yedge
 
         if xeval is None:
-            xeval = np.linspace(np.min(xdata), np.max(xdata), 101)
+            xeval = xcenter + np.linspace(np.min(xdata), np.max(xdata), 101)
         if yeval is None:
-            yeval = np.linspace(np.min(ydata), np.max(ydata), 101)
+            yeval = yedge + np.linspace(np.min(ydata), np.max(ydata), 101)
 
         xinterp, yinterp, Uinterp = interpolate_slow.evaluate_on_grid(xdata, ydata, Udata, xeval=xeval, yeval=yeval,
                                                                       clim=(0.0, 1.0), plot_axes='xy',
