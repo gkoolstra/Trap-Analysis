@@ -21,7 +21,7 @@ except:
     print("Could not import kfit and common. Please do so manually.")
 
 try:
-    from BEM import interpolate_slow
+    from BEMHelper import interpolate_slow
 except:
     print("Could not import BEM module. Please do so manually.")
 
@@ -71,6 +71,10 @@ class TrapSolver:
         output = list()
         potential_names = ['resonator', 'trap', 'resonatorguard', 'centerguard', 'trapguard']
         potential_fns = [fn_resonator, fn_currentloop, fn_resguard, fn_centerguard, fn_trapguard]
+        if fn_centerguard is None:
+            potential_names.pop(3)
+            potential_fns.pop(3)
+
         for name, fn in zip(potential_names, potential_fns):
             if fn[-4:] == '.fld':
                 x, y, V = load_maxwell_data(fn, do_log=False, figsize=(6.,5.), cmap=plt.cm.viridis)
