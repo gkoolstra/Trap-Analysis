@@ -59,12 +59,18 @@ class FullSolver:
         self.master_path = settings["file_handling"]["input_data_path"]
         self.sub_dir = time.strftime("%y%m%d_%H%M%S_{}".format(self.simulation_name))
 
+        self.dc_interpolator_xpoints = 2000
+        self.dc_interpolator_ypoints = 1001
+
+        self.rf_interpolator_xpoints = 2000
+        self.rf_interpolator_ypoints = 2 * 1001
+
     def set_dc_interpolator(self, vres, vtrap, vrg, vtg):
         t = trap_analysis.TrapSolver()
 
         # Evaluate all files in the following range.
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, 2000)
-        yeval = anneal.construct_symmetric_y(-4.0, 201)
+        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
+        yeval = anneal.construct_symmetric_y(-4.0, self.dc_interpolator_ypoints)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
@@ -102,8 +108,8 @@ class FullSolver:
 
         elements, nodes, elem_solution, bounding_box = anneal.load_dsp(os.path.join(self.master_path, "RFfield.dsp"))
         xdata, ydata, Udata = interpolate_slow.prepare_for_interpolation(elements, nodes, elem_solution)
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, 2000)
-        yeval = np.linspace(-4.0, 4.0, 401)
+        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.rf_interpolator_xpoints)
+        yeval = np.linspace(-4.0, 4.0, self.rf_interpolator_ypoints)
 
         # The following data assumes a full model (not symmetrically mirrored model)
         xinterp, yinterp, Uinterp = interpolate_slow.evaluate_on_grid(xdata, ydata, Udata, xeval=xeval, yeval=yeval,
@@ -264,8 +270,8 @@ class FullSolver:
         save = False
 
         # Evaluate all files in the following range.
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, 5000)
-        yeval = anneal.construct_symmetric_y(-4.0, 251)
+        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
+        yeval = anneal.construct_symmetric_y(-4.0, self.dc_interpolator_ypoints)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
@@ -399,7 +405,7 @@ class FullSolver:
             y_plot = y_eval * 1E-6
 
             # Use the solution from the current time step as the initial condition for the next timestep!
-            electron_initial_positions = best_res['x']
+            # electron_initial_positions = best_res['x']
             ex, ey = anneal.r2xy(best_res['x'])
             electrons_in_the_trap.append(np.sum(np.logical_and(ex < self.inserted_trap_length + 1.5E-6,
                                                                ex > self.inserted_trap_length - 1.5E-6)))
