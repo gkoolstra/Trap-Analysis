@@ -75,14 +75,25 @@ class FullSolver:
                                                   do_plot=False,
                                                   inserted_res_length=self.inserted_res_length * 1E6,
                                                   smoothen_xy=None)  # (0.40E-6, 10 * dy))
-        x_eval, y_eval, cropped_potentials = t.crop_potentials(output, ydomain=None, xdomain=None)
 
+        self.output = output
+        x_eval, y_eval, cropped_potentials = t.crop_potentials(output, ydomain=None, xdomain=None)
         coefficients = np.array([vres, vtrap, vrg, vtg])
         combined_potential = t.get_combined_potential(cropped_potentials, coefficients)
         # Note: x_eval and y_eval are 1D arrays that contain the x and y coordinates at which the potentials are
         # evaluated
         # Units of x_eval and y_eval are um
+        self.dc_interpolator = RectBivariateSpline(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
+                                                   kx=3, ky=3, s=self.bivariate_spline_smoothing)
 
+    def update_dc_interpolator(self, vres, vtrap, vrg, vtg):
+        t = trap_analysis.TrapSolver()
+        x_eval, y_eval, cropped_potentials = t.crop_potentials(self.output, ydomain=None, xdomain=None)
+        coefficients = np.array([vres, vtrap, vrg, vtg])
+        combined_potential = t.get_combined_potential(cropped_potentials, coefficients)
+        # Note: x_eval and y_eval are 1D arrays that contain the x and y coordinates at which the potentials are
+        # evaluated
+        # Units of x_eval and y_eval are um
         self.dc_interpolator = RectBivariateSpline(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
                                                    kx=3, ky=3, s=self.bivariate_spline_smoothing)
 
@@ -173,14 +184,14 @@ class FullSolver:
         np.fill_diagonal(rij, 1E-15)
 
         if self.screening_length == np.inf:
-            print("Coulomb!")
+            # print("Coulomb!")
             # Note that an infinite screening length corresponds to the Coulomb case. Usually it should be twice the
             # helium depth
             kij_plus = 1 / 4. * c['e'] ** 2 / (4 * np.pi * c['eps0']) * (1 + 3 * np.cos(2 * tij)) / rij ** 3
             kij_minus = 1 / 4. * c['e'] ** 2 / (4 * np.pi * c['eps0']) * (1 - 3 * np.cos(2 * tij)) / rij ** 3
             lij = 1 / 4. * c['e'] ** 2 / (4 * np.pi * c['eps0']) * 3 * np.sin(2 * tij) / rij ** 3
         else:
-            print("Yukawa!")
+            # print("Yukawa!")
             rij_scaled = rij / self.screening_length
             kij_plus = 1 / 4. * c['e'] ** 2 / (4 * np.pi * c['eps0']) * np.exp(-rij_scaled) / rij ** 3 * \
                               (1 + rij_scaled + rij_scaled ** 2 + (3 + 3 * rij_scaled + rij_scaled ** 2) * np.cos(
@@ -239,7 +250,7 @@ class FullSolver:
 
         center = (self.inserted_trap_length, 0E-6)
         radius = 0.5E-6
-        noise_offset = 0.10E-6
+        noise_offset = 0.05E-6
         init_trap_x = np.array(
             [center[0] + radius * np.cos(2 * np.pi * i / np.float(N)) for i in range(N)]) + np.random.normal(
             scale=noise_offset, size=N)
@@ -253,8 +264,8 @@ class FullSolver:
         save = False
 
         # Evaluate all files in the following range.
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, 2000)
-        yeval = anneal.construct_symmetric_y(-4.0, 201)
+        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, 5000)
+        yeval = anneal.construct_symmetric_y(-4.0, 251)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
