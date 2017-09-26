@@ -1264,7 +1264,7 @@ def load_data(data_path, datafiles=None, names=None, xeval=None, yeval=None, mir
 
     return x_symmetric*1E-6, y_symmetric*1E-6, output
 
-def draw_from_dxf(filename, offset=(0E-6, 0E-6), **plot_options):
+def draw_from_dxf(filename, offset=(0E-6, 0E-6), fill=False, fill_colors=None, **plot_options):
     """
     Draws polylines from a dxf file into a graph
     :param filename: dxf file name.
@@ -1273,12 +1273,21 @@ def draw_from_dxf(filename, offset=(0E-6, 0E-6), **plot_options):
     """
     dxf = dxfgrabber.readfile(filename)
     output = [entity for entity in dxf.entities]
+    i = 0
     for o in output:
-        if o.dxftype == "LWPOLYLINE":
+        if o.dxftype == "LWPOLYLINE" or o.dxftype == "POLYLINE":
             r = np.array(o.points)
             x = r[:,0] + offset[0]
             y = r[:,1] + offset[1]
-            plt.plot(x, y, **plot_options)
+            if fill:
+                if fill_colors is None:
+                    fill_color = 'gray'
+                else:
+                    fill_color = fill_colors[i]
+                plt.fill(x, y, color=fill_color, **plot_options)
+                i += 1
+            else:
+                plt.plot(x, y, **plot_options)
 
 def factors(n):
     """
