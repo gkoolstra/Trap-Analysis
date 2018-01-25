@@ -50,6 +50,18 @@ def s21(kappa_tot, g, f_cavity, f_drive, f_electron, gamma):
 
     return mag_s21, phase_s21 - np.pi / 2.
 
+def phase_function(voltage, V_start, f_cavity, f_drive, kappa_cavity, *parameters):
+    [g, gamma, V_crossing] = parameters
+    f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
+    magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
+    return phase * 180 / np.pi
+
+def magnitude_function(voltage, V_start, f_cavity, f_drive, kappa_cavity, *parameters):
+    [g, gamma, V_crossing] = parameters
+    f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
+    magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
+    return 20 * np.log10(magnitude)
+
 def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess=None, parambounds=None, domain=None, **kwargs):
     """
     Fit a phase response of a single electron coupled to a cavity
@@ -82,7 +94,7 @@ def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess
 
     def phase_fit_function(voltage, *parameters):
         [g, gamma, V_crossing] = parameters
-        f_electron = voltage_to_frequency(voltage, Vstart=V_start, Vcrossing=V_crossing, f_cavity=f_cavity)
+        f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
         magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
         return phase * 180 / np.pi
 
