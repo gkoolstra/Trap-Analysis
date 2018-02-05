@@ -70,9 +70,10 @@ def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters):
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return phase * 180 / np.pi
 
-def magnitude_function(voltage, V_start, f_cavity, f_drive, kappa_cavity, *parameters):
-    [g, gamma, V_crossing] = parameters
-    f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
+def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters):
+    [g, gamma, V_crossing, derivative] = parameters
+    f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
+                                                      derivative=derivative)
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return 20 * np.log10(magnitude)
 
