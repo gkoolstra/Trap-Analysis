@@ -129,11 +129,8 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=Fa
 
     if fitguess is not None:
         startparams = fitguess
-        if fix_derivative:
-            derivative = fix_derivative
     elif fix_derivative:
         # g, gamma, V_crossing
-        derivative = fix_derivative
         startparams = [5E6, 100E6, np.mean(voltage)]
     else:
         # g, gamma, V_crossing, derivative
@@ -142,6 +139,7 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=Fa
     def phase_fit_function(voltage, *parameters):
         if fix_derivative:
             [g, gamma, V_crossing] = parameters
+            derivative = fix_derivative
         else:
             [g, gamma, V_crossing, derivative] = parameters
 
