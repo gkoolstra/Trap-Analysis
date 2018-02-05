@@ -131,7 +131,7 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=Fa
         startparams = fitguess
     elif fix_derivative:
         # g, gamma, V_crossing
-        derivative = kwargs.get('derivative')
+        derivative = fix_derivative
         startparams = [5E6, 100E6, np.mean(voltage)]
     else:
         # g, gamma, V_crossing, derivative
