@@ -25,12 +25,19 @@ def voltage_to_frequency_from_derivative(V, V_crossing, f_cavity, derivative):
     """
     Converts electrode voltage to electron frequency using a the derivative at the crossing point.
     Assumes a shape f = a np.sqrt(V - b)
-    :param V: voltage in V
+    :param V: voltage in V (array)
     :param V_crossing: voltage at which the electron frequency crosses the resonator
     :param f_cavity: cavity frequency in Hz
     :param derivative: slope of the frequency/voltage curve at V = V_crossing in units of Hz/V
     :return: Electron mode frequency estimate
     """
+    b = V_crossing - f_cavity / (2 * derivative)
+    if isinstance(V, np.array):
+        V[V < b] = 0
+    else:
+        if V < b:
+            return 0
+
     return np.sqrt(2 * derivative * f_cavity * (V - V_crossing) + f_cavity ** 2)
 
 def susceptibility(g, f_drive, f_electron, gamma):
@@ -132,6 +139,6 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fitguess=None, pa
     if verbose:
         parnames = ["g", chr(915), "V_crossing", "df/dV"]
         print(tabulate(zip(parnames, bestfitparams, fitparam_errors), headers=["Parameter", "Value", "Std"],
-                       tablefmt="fancy_grid", floatfmt="", numalign="center", stralign='left'))
+                       tablefmt="fancy_grid", floatfmt=".3e", numalign="center", stralign='left'))
 
     return bestfitparams, fitparam_errors
