@@ -72,21 +72,31 @@ def s21(kappa_tot, g, f_cavity, f_drive, f_electron, gamma):
 
     return mag_s21, phase_s21 - np.pi / 2.
 
-def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters):
-    [g, gamma, V_crossing, derivative] = parameters
+def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **kwargs):
+    if len(parameters) == 4:
+        [g, gamma, V_crossing, derivative] = parameters
+    elif len(parameters) == 3:
+        [g, gamma, V_crossing] = parameters
+        derivative = kwargs.get('derivative')
+
     f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                       derivative=derivative)
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return phase * 180 / np.pi
 
-def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters):
-    [g, gamma, V_crossing, derivative] = parameters
+def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **kwargs):
+    if len(parameters) == 4:
+        [g, gamma, V_crossing, derivative] = parameters
+    elif len(parameters) == 3:
+        [g, gamma, V_crossing] = parameters
+        derivative = kwargs.get('derivative')
+
     f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                       derivative=derivative)
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return 20 * np.log10(magnitude)
 
-def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fitguess=None, parambounds=None, domain=None,
+def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, derivative=None, fitguess=None, parambounds=None, domain=None,
               verbose=True, **kwargs):
     """
     Fit a phase response of a single electron coupled to a cavity
@@ -118,7 +128,11 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fitguess=None, pa
     #   Default is of course (-np.inf, np.inf)
 
     def phase_fit_function(voltage, *parameters):
-        [g, gamma, V_crossing, derivative] = parameters
+        if derivative is None:
+            [g, gamma, V_crossing, derivative] = parameters
+        else:
+            [g, gamma, V_crossing] = parameters
+
         f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                           derivative=derivative)
         magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
@@ -126,8 +140,11 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fitguess=None, pa
 
     if fitguess is not None:
         startparams = fitguess
-    else:
+    elif derivative is not None:
         # g, gamma, V_crossing
+        startparams = [5E6, 100E6, np.mean(voltage)]
+    else:
+        # g, gamma, V_crossing, derivative
         startparams = [5E6, 100E6, np.mean(voltage), 50E9]
 
     bestfitparams, covmatrix = optimize.curve_fit(phase_fit_function, fitdatax, fitdatay, startparams, bounds=parambounds, **kwargs)
