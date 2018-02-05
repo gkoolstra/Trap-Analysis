@@ -96,7 +96,7 @@ def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return 20 * np.log10(magnitude)
 
-def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, derivative=None, fitguess=None, parambounds=None, domain=None,
+def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=False, fitguess=None, parambounds=None, domain=None,
               verbose=True, **kwargs):
     """
     Fit a phase response of a single electron coupled to a cavity
@@ -127,25 +127,26 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, derivative=None, 
     #   parambounds = ([0, 0, 0], [np.inf, np.inf, np.inf]), Alternatively, one may set: parambounds = (0, np.inf).
     #   Default is of course (-np.inf, np.inf)
 
+    if fitguess is not None:
+        startparams = fitguess
+    elif fix_derivative:
+        # g, gamma, V_crossing
+        derivative = kwargs.get('derivative')
+        startparams = [5E6, 100E6, np.mean(voltage)]
+    else:
+        # g, gamma, V_crossing, derivative
+        startparams = [5E6, 100E6, np.mean(voltage), 50E9]
+
     def phase_fit_function(voltage, *parameters):
-        if derivative is None:
-            [g, gamma, V_crossing, derivative] = parameters
-        else:
+        if fix_derivative:
             [g, gamma, V_crossing] = parameters
+        else:
+            [g, gamma, V_crossing, derivative] = parameters
 
         f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                           derivative=derivative)
         magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
         return phase * 180 / np.pi
-
-    if fitguess is not None:
-        startparams = fitguess
-    elif derivative is not None:
-        # g, gamma, V_crossing
-        startparams = [5E6, 100E6, np.mean(voltage)]
-    else:
-        # g, gamma, V_crossing, derivative
-        startparams = [5E6, 100E6, np.mean(voltage), 50E9]
 
     bestfitparams, covmatrix = optimize.curve_fit(phase_fit_function, fitdatax, fitdatay, startparams, bounds=parambounds, **kwargs)
 
