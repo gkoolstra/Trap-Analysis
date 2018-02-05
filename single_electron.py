@@ -32,13 +32,15 @@ def voltage_to_frequency_from_derivative(V, V_crossing, f_cavity, derivative):
     :return: Electron mode frequency estimate
     """
     b = V_crossing - f_cavity / (2 * derivative)
+    output = np.sqrt(2 * derivative * f_cavity * (V - V_crossing) + f_cavity ** 2)
+
     if isinstance(V, np.ndarray):
-        V[V < b] = 0
+        output[V < b] = 0
     else:
         if V < b:
             return 0
 
-    return np.sqrt(2 * derivative * f_cavity * (V - V_crossing) + f_cavity ** 2)
+    return output
 
 def susceptibility(g, f_drive, f_electron, gamma):
     """
