@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import optimize
+from tabulate import tabulate
 
 def argselectdomain(xdata, domain):
     ind = np.searchsorted(xdata, domain)
@@ -11,14 +12,26 @@ def selectdomain(xdata, ydata, domain):
 
 def voltage_to_frequency(V, V_start, V_crossing, f_cavity):
     """
-    Converts voltage to frequency
-    :param V: voltage
+    Converts voltage to frequency. Assumes a shape f = a np.sqrt(V - b)
+    :param V: voltage in V
     :param Vstart: voltage at which frequency = 0
     :param Vcrossing: voltage at which the electron frequency crosses the resonator
     :param f_cavity: cavity frequency in Hz
     :return: Electron mode frequency estimate
     """
     return f_cavity * np.sqrt(np.abs(V - V_start)) / np.sqrt(V_crossing - V_start)
+
+def voltage_to_frequency_from_derivative(V, V_crossing, f_cavity, derivative):
+    """
+    Converts electrode voltage to electron frequency using a the derivative at the crossing point.
+    Assumes a shape f = a np.sqrt(V - b)
+    :param V: voltage in V
+    :param V_crossing: voltage at which the electron frequency crosses the resonator
+    :param f_cavity: cavity frequency in Hz
+    :param derivative: slope of the frequency/voltage curve at V = V_crossing in units of Hz/V
+    :return: Electron mode frequency estimate
+    """
+    return np.sqrt(2 * derivative * f_cavity * (V - V_crossing) + f_cavity ** 2)
 
 def susceptibility(g, f_drive, f_electron, gamma):
     """
@@ -50,9 +63,10 @@ def s21(kappa_tot, g, f_cavity, f_drive, f_electron, gamma):
 
     return mag_s21, phase_s21 - np.pi / 2.
 
-def phase_function(voltage, V_start, f_cavity, f_drive, kappa_cavity, *parameters):
-    [g, gamma, V_crossing] = parameters
-    f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
+def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters):
+    [g, gamma, V_crossing, derivative] = parameters
+    f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
+                                                      derivative=derivative)
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return phase * 180 / np.pi
 
@@ -62,7 +76,8 @@ def magnitude_function(voltage, V_start, f_cavity, f_drive, kappa_cavity, *param
     magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
     return 20 * np.log10(magnitude)
 
-def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess=None, parambounds=None, domain=None, **kwargs):
+def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fitguess=None, parambounds=None, domain=None,
+              verbose=True, **kwargs):
     """
     Fit a phase response of a single electron coupled to a cavity
     :param voltage: voltage data
@@ -93,8 +108,9 @@ def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess
     #   Default is of course (-np.inf, np.inf)
 
     def phase_fit_function(voltage, *parameters):
-        [g, gamma, V_crossing] = parameters
-        f_electron = voltage_to_frequency(voltage, V_start=V_start, V_crossing=V_crossing, f_cavity=f_cavity)
+        [g, gamma, V_crossing, derivative] = parameters
+        f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
+                                                          derivative=derivative)
         magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
         return phase * 180 / np.pi
 
@@ -102,7 +118,7 @@ def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess
         startparams = fitguess
     else:
         # g, gamma, V_crossing
-        startparams = [5E6, 100E6, np.mean(voltage)]
+        startparams = [5E6, 100E6, np.mean(voltage), 50E9]
 
     bestfitparams, covmatrix = optimize.curve_fit(phase_fit_function, fitdatax, fitdatay, startparams, bounds=parambounds, **kwargs)
 
@@ -111,5 +127,10 @@ def fit_phase(voltage, phase, f_cavity, f_drive, V_start, kappa_cavity, fitguess
     except:
         print(covmatrix)
         print("Error encountered in calculating errors on fit parameters. This may result from a very flat parameter space")
+
+    if verbose:
+        parnames = ["g", chr(915), "V_crossing", "df/dV"]
+        print(tabulate(zip(parnames, bestfitparams, fitparam_errors), headers=["Parameter", "Value", "Std"],
+                       tablefmt="fancy_grid", floatfmt="", numalign="center", stralign='left'))
 
     return bestfitparams, fitparam_errors
