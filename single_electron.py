@@ -42,37 +42,49 @@ def voltage_to_frequency_from_derivative(V, V_crossing, f_cavity, derivative):
 
     return output
 
-def susceptibility(g, f_drive, f_electron, gamma):
+def susceptibility(g, f_probe, f_electron, gamma):
     """
     Returns the susceptibility of the hybrid system
     :param g: coupling in Hz
-    :param f_drive: microwave drive frequency in Hz
+    :param f_probe: microwave probe frequency in Hz
     :param f_electron: electron mode frequency in Hz (can be obtained from voltage_to_frequency)
     :param gamma: electron dephasing rate in Hz
     :return: susceptibility
     """
-    return (2 * np.pi * g) ** 2 / (2 * np.pi * (f_drive - f_electron) + 1j * 2 * np.pi * gamma)
+    return (2 * np.pi * g) ** 2 / (2 * np.pi * (f_probe - f_electron) + 1j * 2 * np.pi * gamma)
 
-def s21(kappa_tot, g, f_cavity, f_drive, f_electron, gamma):
+def s21(kappa_c, kappa_i, g, f_cavity, f_probe, f_electron, gamma):
     """
     Calculates the transmission, both phase and magnitude, of the cavity that is coupled to the electron.
-    :param kappa_tot: total linewidth (this is the sum of the input and output coupling rate)
+    :param kappa_c: f0 / Qc (the coupling rate leaving through the left and right mirrors, assuming symmetric mirrors) in Hz
+    :param kappa_i: f0 / Qi (internal loss rate of the cavity) in Hz
     :param g: coupling in Hz
     :param f_cavity: cavity frequency in Hz
-    :param f_drive: microwave drive frequency in Hz
+    :param f_probe: microwave probe frequency in Hz
     :param f_electron: electron mode frequency in Hz (can be obtained from voltage_to_frequency)
     :param gamma: electron dephasing rate in Hz
     :return: magnitude (linear), phase (radians)
     """
-    susc = susceptibility(g, f_drive, f_electron, gamma)
-    single_response = 2 * np.pi * kappa_tot / (2 * np.pi * (f_drive - f_cavity) - susc + 1j * 2 * np.pi * kappa_tot)
+    susc = susceptibility(g, f_probe, f_electron, gamma)
+    single_response = 2 * np.pi * kappa_c / (2 * np.pi * (f_probe - f_cavity) - susc + 1j * 2 * np.pi * (kappa_c + kappa_i))
 
     phase_s21 = np.arctan2(-np.imag(single_response), np.real(single_response))
     mag_s21 = np.abs(single_response)
 
     return mag_s21, phase_s21 - np.pi / 2.
 
-def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **kwargs):
+def phase_function(voltage, f_cavity, f_probe, kappa_c, kappa_i, *parameters, **kwargs):
+    """
+    Returns the phase in degrees for a single tone trace where the electron stays in the ground state.
+    :param voltage: voltage data
+    :param f_cavity: cavity frequency in Hz
+    :param f_probe: microwave probe frequency in Hz
+    :param kappa_c: f0 / Qc (the coupling rate leaving through the left and right mirrors, assuming symmetric mirrors) in Hz
+    :param kappa_i: f0 / Qi (internal loss rate of the cavity) in Hz
+    :param parameters: fit parameters, either [g, gamma, V_crossing, derivative] or without the derivative (then see kwargs)
+    :param kwargs: if derivative is not a fit parameter, specify derivative here: --> "derivative=..."
+    :return: phase in degrees
+    """
     if len(parameters) == 4:
         [g, gamma, V_crossing, derivative] = parameters
     elif len(parameters) == 3:
@@ -81,10 +93,21 @@ def phase_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **kwar
 
     f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                       derivative=derivative)
-    magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
+    magnitude, phase = s21(kappa_c, kappa_i, g, f_cavity, f_probe, f_electron, gamma)
     return phase * 180 / np.pi
 
-def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **kwargs):
+def magnitude_function(voltage, f_cavity, f_probe, kappa_c, kappa_i, *parameters, **kwargs):
+    """
+    Returns the magnitude in dB for a single tone trace where the electron stays in the ground state.
+    :param voltage: voltage data
+    :param f_cavity: cavity frequency in Hz
+    :param f_probe: microwave probe frequency in Hz
+    :param kappa_c: f0 / Qc (the coupling rate leaving through the left and right mirrors, assuming symmetric mirrors) in Hz
+    :param kappa_i: f0 / Qi (internal loss rate of the cavity) in Hz
+    :param parameters: fit parameters, either [g, gamma, V_crossing, derivative] or without the derivative (then see kwargs)
+    :param kwargs: if derivative is not a fit parameter, specify derivative here: --> "derivative=..."
+    :return: magnitude as function of voltage in dB
+    """
     if len(parameters) == 4:
         [g, gamma, V_crossing, derivative] = parameters
     elif len(parameters) == 3:
@@ -93,19 +116,20 @@ def magnitude_function(voltage, f_cavity, f_drive, kappa_cavity, *parameters, **
 
     f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                       derivative=derivative)
-    magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
+    magnitude, phase = s21(kappa_c, kappa_i, g, f_cavity, f_probe, f_electron, gamma)
     return 20 * np.log10(magnitude)
 
-def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=False, fitguess=None, parambounds=None, domain=None,
+def fit_phase(voltage, phase, f_cavity, f_probe, kappa_c, kappa_i, fix_derivative=False, fitguess=None, parambounds=None, domain=None,
               verbose=True, **kwargs):
     """
     Fit a phase response of a single electron coupled to a cavity
     :param voltage: voltage data
     :param phase: phase data
     :param f_cavity: cavity frequency in Hz
-    :param f_drive: microwave drive frequency in Hz
+    :param f_probe: microwave probe frequency in Hz
     :param V_start: voltage at which frequency is assumed to be  = 0
-    :param kappa_cavity: total line width
+    :param kappa_c: f0 / Qc (the coupling rate leaving through the left and right mirrors, assuming symmetric mirrors) in Hz
+    :param kappa_i: f0 / Qi (internal loss rate of the cavity) in Hz
     :param fitguess: [g, gamma, V_crossing]
     :param parambounds: A list of bounds in the form ([lower1, lower2, lower3], [upper1, upper2, upper3])
     :param domain: tuple indicating the minimum and maximum of the voltage range to be taken into account
@@ -145,7 +169,7 @@ def fit_phase(voltage, phase, f_cavity, f_drive, kappa_cavity, fix_derivative=Fa
 
         f_electron = voltage_to_frequency_from_derivative(voltage, V_crossing=V_crossing, f_cavity=f_cavity,
                                                           derivative=derivative)
-        magnitude, phase = s21(kappa_cavity, g, f_cavity, f_drive, f_electron, gamma)
+        magnitude, phase = s21(kappa_c, kappa_i, g, f_cavity, f_probe, f_electron, gamma)
         return phase * 180 / np.pi
 
     bestfitparams, covmatrix = optimize.curve_fit(phase_fit_function, fitdatax, fitdatay, startparams, bounds=parambounds, **kwargs)
