@@ -271,7 +271,7 @@ class FullSolver:
 
         # Evaluate all files in the following range.
         xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
-        yeval = anneal.construct_symmetric_y(-4.0, self.dc_interpolator_ypoints)
+        yeval = anneal.construct_symmetric_y(-4.5, self.dc_interpolator_ypoints)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
@@ -429,18 +429,22 @@ class FullSolver:
 
         if self.show_final_result:
             # Plot the resonator and trap electron configuration
-            fig2 = plt.figure(figsize=(6, 4))
-            common.configure_axes(12)
-            plt.pcolormesh(x_eval, y_eval, CMS.V(X_eval, Y_eval), cmap=plt.cm.Spectral_r, vmax=0.0,
+            fig2 = plt.figure(figsize=(4, 3))
+            common.configure_axes(13)
+            plt.pcolormesh(x_eval, y_eval, CMS.V(X_eval, Y_eval), cmap=plt.cm.GnBu_r, vmax=0.0,
                            vmin=-0.75 * np.max(Vres))
+            # plt.pcolormesh(x_eval, y_eval, CMS.V(X_eval, Y_eval), cmap=plt.cm.GnBu_r, vmax=0.0,
+            #                vmin=-0.30)
+
+            # This plots the initial condition, useful for debugging
             # plt.plot(x_trap_init * 1E6, y_trap_init * 1E6, 'o', color='mediumpurple', alpha=0.15)
-            plt.plot(trap_electrons_x * 1E6, trap_electrons_y * 1E6, 'o', color='violet', alpha=1.0)
+
 
             if best_res['status'] > 0:
                 plt.text(self.inserted_trap_length*1E6, -2, "Minimization did not converge", fontdict={"size": 10})
 
-            plt.xlabel("$x$ ($\mu$m)")
-            plt.ylabel("$y$ ($\mu$m)")
+            plt.xlabel("x ($\mu$m)")
+            plt.ylabel("y ($\mu$m)")
             # plt.title("%d electrons" % (self.N_electrons))
             plt.xlim(self.inserted_trap_length*1E6 - 5, self.inserted_trap_length*1E6 + 5)
             plt.ylim(np.min(y_eval), np.max(y_eval))
@@ -451,9 +455,13 @@ class FullSolver:
 
             anneal.draw_from_dxf(os.path.join(self.master_path, "all_electrodes.dxf"), offset=(0E-6, 0E-6),
                                  color="k", alpha=0.5)
-
+            plt.plot(trap_electrons_x * 1E6, trap_electrons_y * 1E6, 'o', color='deeppink', alpha=1.0)
             print("Number of unbounded electrons = %d" % num_unbounded_electrons)
-
+            plt.colorbar()
             plt.show()
+
+            # fig2.tight_layout()
+            # savepath2 = r"S:\Gerwin\Electron on helium\Papers\2017 - Circuit QED with a single electron on helium\Figure 3"
+            # fig2.savefig(os.path.join(savepath2, "%d_electron_config.png" % N), dpi=300)
 
         return np.array(electron_positions)
