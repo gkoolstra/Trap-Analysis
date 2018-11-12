@@ -134,14 +134,14 @@ class FullSolver:
     def Ey(self, xe, ye):
         return self.rf_interpolator.ev(xe, ye, dy=1)
 
-    def curv_xx(self, xe, ye):
-        return self.dc_interpolator.ev(xe, ye, dx=2)
-
-    def curv_yy(self, xe, ye):
-        return self.dc_interpolator.ev(xe, ye, dy=2)
-
-    def curv_xy(self, xe, ye):
-        return self.dc_interpolator.ev(xe, ye, dx=1, dy=1)
+    # def curv_xx(self, xe, ye):
+    #     return self.dc_interpolator.ev(xe, ye, dx=2)
+    #
+    # def curv_yy(self, xe, ye):
+    #     return self.dc_interpolator.ev(xe, ye, dy=2)
+    #
+    # def curv_xy(self, xe, ye):
+    #     return self.dc_interpolator.ev(xe, ye, dx=1, dy=1)
 
     def setup_eom(self, ri):
         """
@@ -212,9 +212,10 @@ class FullSolver:
         np.fill_diagonal(kij_minus, 0)
         np.fill_diagonal(lij, 0)
 
-        Kij_plus = -kij_plus + np.diag(2*c['e']*self.curv_xx(xe, ye) + np.sum(kij_plus, axis=1))
-        Kij_minus = -kij_minus + np.diag(2*c['e']*self.curv_yy(xe, ye) + np.sum(kij_minus, axis=1))
-        Lij = -lij + np.diag(2*c['e']*self.curv_xy(xe, ye) + np.sum(lij, axis=1))
+        # Note: not sure where the factor 2 comes from
+        Kij_plus = -kij_plus + np.diag(c['e']*self.curv_xx(xe, ye) + np.sum(kij_plus, axis=1))
+        Kij_minus = -kij_minus + np.diag(c['e']*self.curv_yy(xe, ye) + np.sum(kij_minus, axis=1))
+        Lij = -lij + np.diag(c['e']*self.curv_xy(xe, ye) + np.sum(lij, axis=1))
 
         K[1:num_electrons+1,1:num_electrons+1] = Kij_plus
         K[num_electrons+1:2*num_electrons+1, num_electrons+1:2*num_electrons+1] = Kij_minus
@@ -232,7 +233,8 @@ class FullSolver:
         EVals, EVecs = np.linalg.eig(LHS)
         return EVals, EVecs
 
-    def get_trap_electron_positions(self, Vres, Vtrap, Vrg, Vtg, N):
+    def get_trap_electron_positions(self, Vres, Vtrap, Vrg, Vtg, N, initial_guess_x=None, initial_guess_y=None,
+                                    use_adaptive_initial_guess=False, solve_equations_of_motion=True):
 
         Vcg = None
         electrode_names = ['resonator', 'trap', 'res_guard', 'trap_guard']
@@ -257,12 +259,20 @@ class FullSolver:
         center = (self.inserted_trap_length, 0E-6)
         radius = 0.5E-6
         noise_offset = 0.05E-6
-        init_trap_x = np.array(
-            [center[0] + radius * np.cos(2 * np.pi * i / np.float(N)) for i in range(N)]) + np.random.normal(
-            scale=noise_offset, size=N)
-        init_trap_y = np.array(
-            [center[1] + radius * np.sin(2 * np.pi * i / np.float(N)) for i in range(N)]) + np.random.normal(
-            scale=noise_offset, size=N)
+        if initial_guess_x is None:
+            init_trap_x = np.array(
+                [center[0] + radius * np.cos(2 * np.pi * i / np.float(N)) for i in range(N)]) + np.random.normal(
+                scale=noise_offset, size=N)
+        else:
+            assert len(initial_guess_x) == N
+            init_trap_x = initial_guess_x
+        if initial_guess_y is None:
+            init_trap_y = np.array(
+                [center[1] + radius * np.sin(2 * np.pi * i / np.float(N)) for i in range(N)]) + np.random.normal(
+                scale=noise_offset, size=N)
+        else:
+            assert len(initial_guess_y) == N
+            init_trap_y = initial_guess_y
 
         electron_initial_positions = anneal.xy2r(np.array(init_trap_x), np.array(init_trap_y))
         x_trap_init, y_trap_init = anneal.r2xy(electron_initial_positions)
@@ -294,7 +304,8 @@ class FullSolver:
 
         x_eval, y_eval, cropped_potentials = t.crop_potentials(output, ydomain=None, xdomain=None)
         electrons_in_the_trap = list()
-        electron_positions = list()
+        electron_positions = list(); energies = list()
+        EVecs = list(); EVals = list()
 
         for k, s in tqdm(enumerate(sweep_points)):
             coefficients = np.array([Vres[k], Vtrap[k], Vrg[k], Vcg, Vtg[k]])
@@ -310,6 +321,10 @@ class FullSolver:
             CMS = anneal.TrapAreaSolver(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
                                         spline_order_x=3, spline_order_y=3, smoothing=self.bivariate_spline_smoothing,
                                         include_screening=self.include_screening, screening_length=self.screening_length)
+
+            self.curv_xx = CMS.ddVdx
+            self.curv_xy = CMS.ddVdxdy
+            self.curv_yy = CMS.ddVdy
 
             X_eval, Y_eval = np.meshgrid(x_eval * 1E-6, y_eval * 1E-6)
 
@@ -405,7 +420,8 @@ class FullSolver:
             y_plot = y_eval * 1E-6
 
             # Use the solution from the current time step as the initial condition for the next timestep!
-            # electron_initial_positions = best_res['x']
+            if use_adaptive_initial_guess:
+                electron_initial_positions = best_res['x']
             ex, ey = anneal.r2xy(best_res['x'])
             electrons_in_the_trap.append(np.sum(np.logical_and(ex < self.inserted_trap_length + 1.5E-6,
                                                                ex > self.inserted_trap_length - 1.5E-6)))
@@ -424,6 +440,13 @@ class FullSolver:
                            -0.35, -Vtrap * 0.60, linestyles='--', color='k')
 
             electron_positions.append(res['x'])
+            energies.append(res['fun']) # this will contain the total minimized energy in eV
+
+            if solve_equations_of_motion:
+                LHS = self.setup_eom(best_res['x'])
+                evals, evecs = self.solve_eom(LHS)
+                EVals.append(evals)
+                EVecs.append(evecs)
 
         trap_electrons_x, trap_electrons_y = anneal.r2xy(res['x'])
 
@@ -464,4 +487,4 @@ class FullSolver:
             # savepath2 = r"S:\Gerwin\Electron on helium\Papers\2017 - Circuit QED with a single electron on helium\Figure 3"
             # fig2.savefig(os.path.join(savepath2, "%d_electron_config.png" % N), dpi=300)
 
-        return np.array(electron_positions)
+        return np.array(electron_positions), np.array(energies), np.array(EVecs), np.array(EVals)
