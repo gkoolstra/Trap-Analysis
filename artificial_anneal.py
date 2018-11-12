@@ -388,6 +388,15 @@ class TrapAreaSolver:
         """
         return self.interpolator.ev(xi, yi, dx=0, dy=2)
 
+    def ddVdxdy(self, xi, yi):
+        """
+        Second derivative of the electrostatic potential in the y-direction.
+        :param xi: a 1D array, or float
+        :param yi: a 1D array or float
+        :return:
+        """
+        return self.interpolator.ev(xi, yi, dx=1, dy=1)
+
     def grad_Vee(self, xi, yi, eps=1E-15):
         """
         Derivative of the electron-electron interaction term
