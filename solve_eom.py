@@ -59,6 +59,9 @@ class FullSolver:
         self.master_path = settings["file_handling"]["input_data_path"]
         self.sub_dir = time.strftime("%y%m%d_%H%M%S_{}".format(self.simulation_name))
 
+        self.interpolator_xbounds = (-2.5, 2.5) # Units are microns
+        self.interpolator_ybounds = (-3.0, 3.0) # Units are microns
+
         self.dc_interpolator_xpoints = 2000
         self.dc_interpolator_ypoints = 1001
 
@@ -69,8 +72,9 @@ class FullSolver:
         t = trap_analysis.TrapSolver()
 
         # Evaluate all files in the following range.
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
-        yeval = anneal.construct_symmetric_y(-4.0, self.dc_interpolator_ypoints)
+        # xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
+        xeval = np.linspace(self.interpolator_xbounds[0], self.interpolator_xbounds[1], self.dc_interpolator_xpoints)
+        yeval = anneal.construct_symmetric_y(self.interpolator_ybounds[0], self.dc_interpolator_ypoints)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
@@ -270,8 +274,9 @@ class FullSolver:
         save = False
 
         # Evaluate all files in the following range.
-        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
-        yeval = anneal.construct_symmetric_y(-4.5, self.dc_interpolator_ypoints)
+        # xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
+        xeval = np.linspace(self.interpolator_xbounds[0], self.interpolator_xbounds[1], self.dc_interpolator_xpoints)
+        yeval = anneal.construct_symmetric_y(self.interpolator_ybounds[0], self.dc_interpolator_ypoints)
 
         dx = np.diff(xeval)[0] * 1E-6
         dy = np.diff(yeval)[0] * 1E-6
