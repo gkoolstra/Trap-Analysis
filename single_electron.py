@@ -57,14 +57,15 @@ def s21(kappa_tot, g, f_cavity, f_probe, f_electron, gamma):
     """
     Calculates the transmission, both phase and magnitude, of the cavity that is coupled to the electron.
     :param kappa_tot: f0 / Q_loaded (the coupling rate leaving through the left and right mirrors, assuming symmetric mirrors + internal loss inside the cavity) in Hz. This is the FWHM.
-    :param g: coupling in Hz
+    :param g: coupling in Hz, when the electron is resonant.
     :param f_cavity: cavity frequency in Hz
     :param f_probe: microwave probe frequency in Hz
     :param f_electron: electron mode frequency in Hz (can be obtained from voltage_to_frequency)
     :param gamma: electron dephasing rate in Hz
     :return: magnitude (linear), phase (radians)
     """
-    susc = susceptibility(g, f_probe, f_electron, gamma)
+    scaled_g = g * np.sqrt(f_cavity / f_electron)
+    susc = susceptibility(scaled_g, f_probe, f_electron, gamma)
     single_response = 2 * np.pi * (kappa_tot / 2.) / (2 * np.pi * (f_probe - f_cavity) - susc + 1j * 2 * np.pi * (kappa_tot / 2.))
 
     phase_s21 = np.arctan2(-np.imag(single_response), np.real(single_response))
