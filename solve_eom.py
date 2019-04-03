@@ -1,14 +1,15 @@
-import os, time, json, sys
+import os, time, json, sys, scipy
 sys.path.append("/Users/gkoolstra/Documents/Code")
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from scipy.optimize import minimize
 from termcolor import cprint
-from Common import common
+from Common import common, kfit
 from TrapAnalysis import trap_analysis, artificial_anneal as anneal
 from BEMHelper import interpolate_slow
 from scipy.interpolate import RectBivariateSpline
+from scipy.signal import convolve2d
 from .resonator_analysis import get_resonator_constants
 
 class FullSolver:
@@ -42,7 +43,10 @@ class FullSolver:
         self.remove_bounds = settings['electron_handling']['remove_bounds']
         self.show_final_result = settings['prelims']['show_final_result']
         self.create_movie = settings['prelims']['create_movie']
-        self.bivariate_spline_smoothing = settings['electrostatics']['bivariate_spline_smoothing']
+        self.dc_spline_smoothing = 0
+        self.rf_spline_smoothing = settings['electrostatics']['rf_spline_smoothing']
+        self.sigma_x = settings['electrostatics']['sigma_x']
+        self.sigma_y = settings['electrostatics']['sigma_y']
 
         self.N_electrons = settings['initial_condition']["N_electrons"]
         self.N_rows = int(settings['initial_condition']['N_rows'])
@@ -94,7 +98,7 @@ class FullSolver:
         # evaluated
         # Units of x_eval and y_eval are um
         self.dc_interpolator = RectBivariateSpline(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
-                                                   kx=3, ky=3, s=self.bivariate_spline_smoothing)
+                                                   kx=3, ky=3, s=self.dc_spline_smoothing)
 
     def update_dc_interpolator(self, vres, vtrap, vrg, vtg):
         t = trap_analysis.TrapSolver()
@@ -105,7 +109,7 @@ class FullSolver:
         # evaluated
         # Units of x_eval and y_eval are um
         self.dc_interpolator = RectBivariateSpline(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
-                                                   kx=3, ky=3, s=self.bivariate_spline_smoothing)
+                                                   kx=3, ky=3, s=self.dc_spline_smoothing)
 
 
     def set_rf_interpolator(self):
@@ -122,7 +126,7 @@ class FullSolver:
                                                                       plot_data=False)
 
         self.rf_interpolator = RectBivariateSpline(xeval * 1E-6, yeval * 1E-6, -Uinterp.T,
-                                                   kx=3, ky=3, s=self.bivariate_spline_smoothing)
+                                                   kx=3, ky=3, s=self.rf_spline_smoothing)
 
     def get_constants(self):
         """
@@ -138,6 +142,19 @@ class FullSolver:
     def Ey(self, xe, ye):
         return self.rf_interpolator.ev(xe, ye, dy=1)
 
+    def gaussian_kernel(self, kernel_x, kernel_y, sigma_x, sigma_y):
+        return 1 / (2 * np.pi * sigma_x * sigma_y) * np.exp(
+                - (kernel_x ** 2 / (2 * sigma_x ** 2) + kernel_y ** 2 / (2 * sigma_y ** 2)))
+
+    def gaussian_xy_kernel(self, kernel_x, kernel_y, sigma_x, sigma_y):
+        return kernel_x * kernel_y / (sigma_x ** 2 * sigma_y ** 2) * self.gaussian_kernel(kernel_x, kernel_y, sigma_x, sigma_y)
+
+    def gaussian_xx_kernel(self, kernel_x, kernel_y, sigma_x, sigma_y):
+        return (kernel_x ** 2 - sigma_x ** 2) * self.gaussian_kernel(kernel_x, kernel_y, sigma_x, sigma_y) / sigma_x ** 4
+
+    def gaussian_yy_kernel(self, kernel_x, kernel_y, sigma_x, sigma_y):
+        return (kernel_y ** 2 - sigma_y ** 2) * self.gaussian_kernel(kernel_x, kernel_y, sigma_x, sigma_y) / sigma_y ** 4
+
     # def curv_xx(self, xe, ye):
     #     return self.dc_interpolator.ev(xe, ye, dx=2)
     #
@@ -146,6 +163,65 @@ class FullSolver:
     #
     # def curv_xy(self, xe, ye):
     #     return self.dc_interpolator.ev(xe, ye, dx=1, dy=1)
+
+    def crop_potential(self, x, y, U, xrange, yrange):
+        xmin_idx, xmax_idx = common.find_nearest(x, xrange[0]), common.find_nearest(x, xrange[1])
+        ymin_idx, ymax_idx = common.find_nearest(y, yrange[0]), common.find_nearest(y, yrange[1])
+
+        return x[xmin_idx:xmax_idx], y[ymin_idx:ymax_idx], U[ymin_idx:ymax_idx, xmin_idx:xmax_idx]
+
+    def plot_gaussian_kernels(self):
+        # Evaluate all files in the following range.
+        xeval = np.linspace(-self.box_length * 1E6, self.box_length * 1E6, self.dc_interpolator_xpoints)
+        yeval = anneal.construct_symmetric_y(-4.5, self.dc_interpolator_ypoints)
+
+        dx = np.diff(xeval)[0] * 1E-6
+        dy = np.diff(yeval)[0] * 1E-6
+
+        k_x = np.arange(-5 * self.sigma_x, 5 * self.sigma_x + dx, dx)
+        k_y = np.arange(-5 * self.sigma_y, 5 * self.sigma_y + dy, dy)
+
+        kernel_x, kernel_y = np.meshgrid(k_x, k_y)
+
+        fig = plt.figure(figsize=(8.,6.))
+        common.configure_axes(13)
+        plt.subplot(221)
+        im = plt.pcolormesh(kernel_x * 1E6, kernel_y * 1E6,
+                       self.gaussian_kernel(kernel_x, kernel_y, self.sigma_x, self.sigma_y) * dx * dy,
+                       cmap=plt.cm.Reds, vmin=0)
+        plt.ylabel("y (%sm)" % (chr(956)))
+        plt.xlim(np.min(kernel_x) * 1E6, np.max(kernel_x) * 1E6)
+        plt.ylim(np.min(kernel_y) * 1E6, np.max(kernel_y) * 1E6)
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+
+        plt.subplot(222)
+        im = plt.pcolormesh(kernel_x * 1E6, kernel_y * 1E6,
+                       self.gaussian_xy_kernel(kernel_x, kernel_y, self.sigma_x, self.sigma_y) * dx * dy,
+                       cmap=plt.cm.RdBu)
+        plt.xlim(np.min(kernel_x) * 1E6, np.max(kernel_x) * 1E6)
+        plt.ylim(np.min(kernel_y) * 1E6, np.max(kernel_y) * 1E6)
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+
+        plt.subplot(223)
+        im = plt.pcolormesh(kernel_x * 1E6, kernel_y * 1E6,
+                       self.gaussian_xx_kernel(kernel_x, kernel_y, self.sigma_x, self.sigma_y) * dx * dy,
+                       cmap=plt.cm.RdBu)
+        plt.ylabel("y (%sm)" % (chr(956)))
+        plt.xlabel("x (%sm)" % (chr(956)))
+        plt.xlim(np.min(kernel_x) * 1E6, np.max(kernel_x) * 1E6)
+        plt.ylim(np.min(kernel_y) * 1E6, np.max(kernel_y) * 1E6)
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+
+        plt.subplot(224)
+        im = plt.pcolormesh(kernel_x * 1E6, kernel_y * 1E6,
+                       self.gaussian_yy_kernel(kernel_x, kernel_y, self.sigma_x, self.sigma_y) * dx * dy,
+                       cmap=plt.cm.RdBu)
+        plt.xlabel("x (%sm)" % (chr(956)))
+        plt.xlim(np.min(kernel_x) * 1E6, np.max(kernel_x) * 1E6)
+        plt.ylim(np.min(kernel_y) * 1E6, np.max(kernel_y) * 1E6)
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+
+        fig.tight_layout()
 
     def setup_eom(self, ri):
         """
@@ -167,6 +243,7 @@ class FullSolver:
         diag_invM = 1/c['m_e'] * np.ones(2 * num_electrons + 1)
         diag_invM[0] = 1/L
         invM = np.diag(diag_invM)
+        M = np.diag(np.array([L] + [c['m_e']]*(2 * num_electrons)))
 
         # Set up the kinetic matrix next
         Kij_plus, Kij_minus, Lij = np.zeros(np.shape(invM)), np.zeros(np.shape(invM)), np.zeros(np.shape(invM))
@@ -226,15 +303,16 @@ class FullSolver:
         K[1:num_electrons+1, num_electrons+1:2*num_electrons+1] = Lij
         K[num_electrons+1:2*num_electrons+1, 1:num_electrons+1] = Lij
 
-        return np.dot(invM, K)
+        return K, M
 
-    def solve_eom(self, LHS):
+    def solve_eom(self, LHS, RHS):
         """
         Solves the eigenvalues and eigenvectors for the system of equations constructed with setup_eom()
         :param LHS: matrix product of M^(-1) K
         :return: Eigenvalues, Eigenvectors
         """
-        EVals, EVecs = np.linalg.eig(LHS)
+        # EVals, EVecs = np.linalg.eig(np.dot(np.linalg.inv(RHS), LHS))
+        EVals, EVecs = scipy.linalg.eigh(LHS, b=RHS)
         return EVals, EVecs
 
     def get_trap_electron_positions(self, Vres, Vtrap, Vrg, Vtg, N, initial_guess_x=None, initial_guess_y=None,
@@ -295,7 +373,7 @@ class FullSolver:
                                                   extend_resonator=False, inserted_trap_length=self.inserted_trap_length * 1E6,
                                                   do_plot=self.inspect_potentials,
                                                   inserted_res_length=self.inserted_res_length * 1E6,
-                                                  smoothen_xy=None)#(0.40E-6, 10 * dy))
+                                                  smoothen_xy=None) #(0.40E-6, 10 * dy))
 
         if self.inspect_potentials:
             plt.show()
@@ -312,6 +390,8 @@ class FullSolver:
         electron_positions = list(); energies = list()
         EVecs = list(); EVals = list()
 
+        Second_Derivs = np.zeros((len(sweep_points), N, 3))
+
         for k, s in tqdm(enumerate(sweep_points)):
             coefficients = np.array([Vres[k], Vtrap[k], Vrg[k], Vcg, Vtg[k]])
             coefficients[SweepIdx] = s
@@ -319,17 +399,55 @@ class FullSolver:
                 coefficients = np.delete(coefficients, 3)
 
             combined_potential = t.get_combined_potential(cropped_potentials, coefficients)
+            # tilt_towards_trap = -5E-4 # units are eV/um. A positive tilt moves electron away from reservoir
+            # tilt_array = np.reshape(np.tile(tilt_towards_trap * x_eval, len(y_eval)), (len(y_eval), len(x_eval))) # tilt point is centered around (x, y) = (0, 0) um
+            # combined_potential -= tilt_array
             # Note: x_eval and y_eval are 1D arrays that contain the x and y coordinates at which the potentials are
             # evaluated
             # Units of x_eval and y_eval are um
 
             CMS = anneal.TrapAreaSolver(x_eval * 1E-6, y_eval * 1E-6, -combined_potential.T,
-                                        spline_order_x=3, spline_order_y=3, smoothing=self.bivariate_spline_smoothing,
+                                        spline_order_x=3, spline_order_y=3, smoothing=self.dc_spline_smoothing,
                                         include_screening=self.include_screening, screening_length=self.screening_length)
 
-            self.curv_xx = CMS.ddVdx
-            self.curv_xy = CMS.ddVdxdy
-            self.curv_yy = CMS.ddVdy
+            # Define the second derivatives through convolution with a derivative of gaussians approach
+            # kernel_x and kernel_y should have units of m
+            kernel_x = np.arange(-5 * self.sigma_x, 5 * self.sigma_x + dx, dx)
+            kernel_y = np.arange(-5 * self.sigma_y, 5 * self.sigma_y + dy, dy)
+
+            # Test if we can construct the kernel accurately
+            n_kernel_x = self.sigma_x / dx
+            n_kernel_y = self.sigma_y / dy
+
+            if n_kernel_x < 2 or n_kernel_y < 2:
+                # Do not apply smoothing if the sampling of the potential is too course compared to sigma_x or sigma_y
+                if k == 0:
+                    print("(%s_x, %s_y) must be > (%.3f, %.3f) %sm to apply smoothing." % (chr(963), chr(963), 2 * dx * 1E6, 2 * dy * 1E6, chr(956)))
+                    print("Ignoring smoothing conditions.")
+                self.curv_xx = CMS.ddVdx
+                self.curv_xy = CMS.ddVdxdy
+                self.curv_yy = CMS.ddVdy
+            else:
+                # Apply gaussian smoothing and calculate the second derivative via convolution
+                kernel_meshgrid = np.meshgrid(kernel_x, kernel_y)
+
+                # Crop the data before convolving it.
+                x_crop, y_crop, U_crop = self.crop_potential(x_eval, y_eval, -combined_potential,
+                                                             xrange=(-1.5, 0), yrange=(-1.0, 1.0))
+
+                # The approximations for the second derivatives are calculated by convolving the guassian kernels with the data
+                g_xx = convolve2d(U_crop, self.gaussian_xx_kernel(kernel_meshgrid[0], kernel_meshgrid[1],
+                                                                               self.sigma_x, self.sigma_y), mode='same')
+                g_xy = convolve2d(U_crop, self.gaussian_xy_kernel(kernel_meshgrid[0], kernel_meshgrid[1],
+                                                                               self.sigma_x, self.sigma_y), mode='same')
+                g_yy = convolve2d(U_crop, self.gaussian_yy_kernel(kernel_meshgrid[0], kernel_meshgrid[1],
+                                                                               self.sigma_x, self.sigma_y), mode='same')
+
+                # Create the interpolating functions
+                self.curv_xx = RectBivariateSpline(x_crop * 1E-6, y_crop * 1E-6, dx * dy * g_xx.T, kx=3, ky=3, s=0).ev
+                self.curv_xy = RectBivariateSpline(x_crop * 1E-6, y_crop * 1E-6, dx * dy * g_xy.T, kx=3, ky=3, s=0).ev
+                self.curv_yy = RectBivariateSpline(x_crop * 1E-6, y_crop * 1E-6, dx * dy * g_yy.T, kx=3, ky=3, s=0).ev
+
 
             X_eval, Y_eval = np.meshgrid(x_eval * 1E-6, y_eval * 1E-6)
 
@@ -448,10 +566,14 @@ class FullSolver:
             energies.append(res['fun']) # this will contain the total minimized energy in eV
 
             if solve_equations_of_motion:
-                LHS = self.setup_eom(best_res['x'])
-                evals, evecs = self.solve_eom(LHS)
+                LHS, RHS = self.setup_eom(best_res['x'])
+                evals, evecs = self.solve_eom(LHS, RHS)
                 EVals.append(evals)
                 EVecs.append(evecs)
+
+                Second_Derivs[k, :, 0] = self.curv_xx(ex, ey)
+                Second_Derivs[k, :, 1] = self.curv_xy(ex, ey)
+                Second_Derivs[k, :, 2] = self.curv_yy(ex, ey)
 
         trap_electrons_x, trap_electrons_y = anneal.r2xy(res['x'])
 
@@ -492,4 +614,4 @@ class FullSolver:
             # savepath2 = r"S:\Gerwin\Electron on helium\Papers\2017 - Circuit QED with a single electron on helium\Figure 3"
             # fig2.savefig(os.path.join(savepath2, "%d_electron_config.png" % N), dpi=300)
 
-        return np.array(electron_positions), np.array(energies), np.array(EVecs), np.array(EVals)
+        return np.array(electron_positions), np.array(energies), np.array(EVecs), np.array(EVals), Second_Derivs
