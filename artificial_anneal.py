@@ -517,7 +517,7 @@ class TrapAreaSolver:
         return best_result
 
     def perturb_and_solve(self, cost_function, N_perturbations, T, solution_data_reference,
-                          maximum_dx=None, maximum_dy=None, **minimizer_options):
+                          maximum_dx=None, maximum_dy=None, do_print=True, **minimizer_options):
         """
         This function is to be run after a minimization by scipy.optimize.minimize has already occured.
         It takes the output of that function in solution_data_reference and tries to find a lower energy state
@@ -541,12 +541,14 @@ class TrapAreaSolver:
             res = minimize(cost_function, electron_perturbed_positions, **minimizer_options)
 
             if res['status'] == 0 and res['fun'] < best_result['fun']:
-                cprint("\tNew minimum was found after perturbing!", "green")
+                if do_print:
+                    cprint("\tNew minimum was found after perturbing!", "green")
                 best_result = res
             elif res['status'] == 0 and res['fun'] > best_result['fun']:
                 pass  # No new minimum was found after perturbation, this is quite common.
             elif res['status'] != 0 and res['fun'] < best_result['fun']:
-                cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
+                if do_print:
+                    cprint("\tThere is a lower state, but minimizer didn't converge!", "red")
             elif res['status'] != 0 and res['fun'] > best_result['fun']:
                 pass
 
