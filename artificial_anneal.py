@@ -1065,7 +1065,7 @@ def construct_symmetric_y(ymin, N):
     :return: One-sided array of length N.
     """
     dy = 2 * np.abs(ymin) / np.float(2 * N + 1)
-    return np.linspace(ymin, -dy / 2., (np.abs(ymin) - 0.5 * dy) / dy + 1)
+    return np.linspace(ymin, -dy / 2., int((np.abs(ymin) - 0.5 * dy) / dy + 1))
 
 
 def load_data(data_path, datafiles=None, names=None, xeval=None, yeval=None, mirror_y=True, do_plot=True, extend_resonator=True,

@@ -136,7 +136,8 @@ class TrapSolver:
         """
         # Fit the potential data to a parabola
         try:
-            fr, ferr = kfit.fit_parabola(x, V, fitparams=[0, -1, 0], domain=fitdomain, verbose=False)
+            df = kfit.fit_parabola(x, V, fitparams=[0, -1, 0], domain=fitdomain)
+            fr, ferr = df.data.values
         except:
             raise ValueError("Fit error!")
 
@@ -159,7 +160,7 @@ class TrapSolver:
 
         return fr, ferr
 
-    def get_electron_frequency(self, fr, ferr, verbose=True):
+    def get_electron_frequency(self, fr, ferr, verbose=False):
         """
         Gets the electron frequency from fit_electron_potential.
         :param fr: Fitresults (list). Curvature units for input are in V/um**2.
